@@ -30,6 +30,7 @@ model User {
   latexDocuments      LatexDocument[]
   wishlist            WishlistItem[]
   reviews             Review[]
+  resourceCourses     ResourceCourse[]      @relation("ResourceCourses")
 
   @@index([email])
   @@index([role])
@@ -162,6 +163,9 @@ model Lecture {
   type         String            @default("video")
   content      String?
   videoUrl     String?           @map("video_url")
+  videoType    String?           @map("video_type") // "youtube" or "upload"
+  notesPdfUrl  String?           @map("notes_pdf_url")
+  compiledPdfUrl String?         @map("compiled_pdf_url")
   duration     Int?
   order        Int               @default(0)
   sectionId    String            @map("section_id")
@@ -169,6 +173,7 @@ model Lecture {
   createdAt    DateTime          @default(now()) @map("created_at")
   updatedAt    DateTime          @updatedAt @map("updated_at")
   attachments  Attachment[]
+  mediaAssets  LectureMedia[]
   latexProject LatexProject?
   quiz         Quiz?             @relation(fields: [quizId], references: [id])
   section      Section           @relation(fields: [sectionId], references: [id], onDelete: Cascade)
@@ -190,6 +195,21 @@ model Attachment {
   lecture   Lecture  @relation(fields: [lectureId], references: [id], onDelete: Cascade)
 
   @@index([lectureId])
+}
+
+model LectureMedia {
+  id        String   @id @default(cuid())
+  lectureId String   @map("lecture_id")
+  name      String
+  url       String
+  type      String
+  size      Int
+  mimeType String   @map("mime_type")
+  createdAt DateTime @default(now()) @map("created_at")
+  lecture   Lecture  @relation(fields: [lectureId], references: [id], onDelete: Cascade)
+
+  @@index([lectureId])
+  @@index([type])
 }
 
 model Quiz {
@@ -405,4 +425,32 @@ model YjsSnapshot {
   createdAt DateTime @default(now()) @map("created_at")
 
   @@unique([docName, version])
+}
+
+// Learning Platform Models - W3Schools-style
+model ResourceCourse {
+  id          String   @id @default(cuid())
+  title       String
+  description String?
+  instructorId String  @map("instructor_id")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  content     ResourceContent?
+  instructor  User     @relation("ResourceCourses", fields: [instructorId], references: [id], onDelete: Cascade)
+
+  @@index([instructorId])
+  @@index([createdAt])
+}
+
+model ResourceContent {
+  id           String   @id @default(cuid())
+  courseId     String   @unique @map("course_id")
+  latexContent String   @map("latex_content")
+  compiledHtml String   @map("compiled_html")
+  pdfUrl       String?  @map("pdf_url")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+  course       ResourceCourse @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([courseId])
+  @@index([updatedAt])
 }

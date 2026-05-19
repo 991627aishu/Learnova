@@ -20,11 +20,12 @@ interface AuthState {
   logout: () => void;
   setUser: (user: User) => void;
   clearUser: () => void;
+  fetchUser: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       token: null,
       setAuth: (user, token) => {
@@ -36,15 +37,37 @@ export const useAuthStore = create<AuthState>()(
         set({ user: null, token: null });
       },
       setUser: (user) => set({ user }),
-      clearUser: () => set({ user: null }), // Add function to clear user data
+      clearUser: () => set({ user: null }),
+      // Add function to fetch user data from token
+      fetchUser: async () => {
+        const token = get().token;
+        if (!token) return;
+        
+        try {
+          const response = await fetch("/api/auth/me", {
+            headers: {
+              "Authorization": `Bearer ${token}`,
+            },
+          });
+          
+          if (response.ok) {
+            const userData = await response.json();
+            set({ user: userData.user });
+          }
+        } catch (error) {
+          console.error("Failed to fetch user data:", error);
+        }
+      },
     }),
     { 
       name: "lms-auth", 
       partialize: (s) => ({ token: s.token }), // Only persist token, not user data
       onRehydrateStorage: () => (state) => {
-        // Clear user data on rehydrate to force fresh fetch
-        if (state?.user) {
-          state.user = null;
+        // Fetch user data when rehydrating with a token
+        if (state?.token && !state?.user) {
+          setTimeout(() => {
+            state?.fetchUser?.();
+          }, 0);
         }
       }
     }

@@ -52,18 +52,18 @@ export function FileUpload({ onUploadSuccess, value, accept, maxSize }: FileUplo
     const displayUrl = value.startsWith("http") ? value : `${window.location.origin}${value}`;
     
     return (
-      <div className="relative border rounded-xl overflow-hidden group h-48 bg-muted/20">
+      <div className="relative border border-amber-500/20 rounded-xl overflow-hidden group h-48 bg-slate-800/30 hover:border-amber-500/40 transition-all">
         {value.match(/\.(jpeg|jpg|gif|png|webp)$/i) ? (
           <div className="w-full h-full flex items-center justify-center">
             <img src={displayUrl} alt="Upload preview" className="max-h-full max-w-full object-contain transition-transform group-hover:scale-105" />
           </div>
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center gap-2">
-            <File className="w-10 h-10 text-muted-foreground" />
+            <File className="w-10 h-10 text-amber-500" />
             <span className="text-xs text-muted-foreground font-medium truncate max-w-[200px]">{value.split('/').pop()}</span>
           </div>
         )}
-        <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+        <div className="absolute inset-0 bg-slate-900/80 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
           <Button type="button" variant="destructive" size="sm" className="font-bold rounded-lg" onClick={() => onUploadSuccess("")}>
             <X className="w-4 h-4 mr-2" /> Remove File
           </Button>
@@ -74,7 +74,7 @@ export function FileUpload({ onUploadSuccess, value, accept, maxSize }: FileUplo
 
   return (
     <div
-      className="border-2 border-dashed border-border/60 rounded-xl p-8 flex flex-col items-center justify-center bg-card/30 hover:bg-card/50 hover:border-primary/40 transition-all cursor-pointer group"
+      className="border-2 border-dashed border-amber-500/30 rounded-xl p-8 flex flex-col items-center justify-center bg-slate-800/20 hover:bg-slate-800/40 hover:border-amber-500/50 transition-all cursor-pointer group"
       onDragOver={(e) => e.preventDefault()}
       onDrop={onDrop}
       onClick={() => fileInputRef.current?.click()}
@@ -86,8 +86,8 @@ export function FileUpload({ onUploadSuccess, value, accept, maxSize }: FileUplo
         accept={accept}
         onChange={(e) => e.target.files && handleUpload(e.target.files[0])}
       />
-      <div className="w-14 h-14 rounded-full bg-primary/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform">
-        {isUploading ? <Loader2 className="w-7 h-7 text-primary animate-spin" /> : <UploadCloud className="w-7 h-7 text-primary" />}
+      <div className="w-14 h-14 rounded-full bg-amber-500/10 flex items-center justify-center mb-4 group-hover:scale-110 transition-transform border border-amber-500/20">
+        {isUploading ? <Loader2 className="w-7 h-7 text-amber-500 animate-spin" /> : <UploadCloud className="w-7 h-7 text-amber-500" />}
       </div>
       <div className="text-center space-y-1">
         <p className="text-sm font-bold text-foreground">

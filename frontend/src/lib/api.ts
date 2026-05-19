@@ -66,7 +66,12 @@ export async function api<T>(
       let errorMessage = json.error || json.message;
       if (!errorMessage) {
         if (res.status === 404) errorMessage = "Resource not found.";
-        else if (res.status === 401) errorMessage = "Authentication required. Please log in again.";
+        else if (res.status === 401) {
+          errorMessage = "Authentication required. Please log in again.";
+          // Clear invalid token and redirect to login
+          localStorage.removeItem("lms_token");
+          window.location.href = "/login";
+        }
         else if (res.status === 403) errorMessage = "You do not have permission to perform this action.";
         else if (res.status >= 500) errorMessage = "An internal server error occurred. Please try again later.";
         else errorMessage = res.statusText || "Request failed. Please try again.";
@@ -100,7 +105,12 @@ export async function apiFormData<T>(path: string, formData: FormData): Promise<
     let errorMessage = json.error || json.message;
     if (!errorMessage) {
       if (res.status === 404) errorMessage = "Resource not found.";
-      else if (res.status === 401) errorMessage = "Authentication required. Please log in again.";
+      else if (res.status === 401) {
+        errorMessage = "Authentication required. Please log in again.";
+        // Clear invalid token and redirect to login
+        localStorage.removeItem("lms_token");
+        window.location.href = "/login";
+      }
       else if (res.status === 403) errorMessage = "You do not have permission to perform this action.";
       else if (res.status >= 500) errorMessage = "An internal server error occurred. Please try again later.";
       else errorMessage = res.statusText || "Upload failed. Please try again.";

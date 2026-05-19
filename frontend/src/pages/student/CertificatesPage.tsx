@@ -6,11 +6,13 @@ import { Trophy, Download, Calendar, GraduationCap, Award, Loader2 } from "lucid
 import { useState } from "react";
 import { useToastStore } from "@/store/toastStore";
 
-
-interface Certificate {
+interface Enrollment {
   id: string;
-  certificateId: string;
-  issuedAt: string;
+  userId: string;
+  courseId: string;
+  enrolledAt: string;
+  completedAt: string | null;
+  isCompleted: boolean;
   course: {
     id: string;
     title: string;
@@ -24,54 +26,80 @@ export function CertificatesPage() {
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
 
   const { data, isLoading } = useQuery({
-    queryKey: ["my-certificates"],
+    queryKey: ["my-enrollments"],
     queryFn: async () => {
-      const res = await api<{ certificates: Certificate[] }>("/certificates/my");
+      const res = await api<{ enrollments: Enrollment[] }>("/enrollments/my");
       if (res.error) throw new Error(res.error);
       return res.data!;
     },
   });
 
-  const certificates = data?.certificates ?? [];
+  // Filter only completed enrollments for certificates
+  const certificates = data?.enrollments?.filter(enrollment => enrollment.isCompleted && enrollment.completedAt) ?? [];
 
-  const handleDownload = async (courseId: string, courseTitle: string) => {
-    setDownloadingId(courseId);
+  const handleDownload = async (enrollment: Enrollment) => {
+    setDownloadingId(enrollment.id);
+    console.log("🔥 DOWNLOADING CERTIFICATE");
+    console.log("📋 Enrollment ID:", enrollment.id);
+    console.log("📚 Course:", enrollment.course.title);
+    
     try {
-      const authStoreStr = localStorage.getItem("lms-auth");
-      let token = "";
-      if (authStoreStr) {
-        const parsed = JSON.parse(authStoreStr);
-        token = parsed?.state?.token || "";
+      // Get JWT token
+      const token = localStorage.getItem("lms_token");
+      if (!token) {
+        throw new Error("Authentication required");
       }
 
-      const response = await fetch(`/api/certificates/course/${courseId}/generate`, {
-        method: "POST",
+      // Fetch the certificate as BLOB using the new API endpoint
+      const response = await fetch(`/api/certificates/download/${enrollment.id}`, {
         headers: {
-          ...(token ? { Authorization: `Bearer ${token}` } : {})
+          'Authorization': `Bearer ${token}`
         }
       });
 
+      console.log("📡 Response status:", response.status);
+
       if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
-        throw new Error(err.error || "Failed to download certificate");
+        const errorText = await response.text();
+        console.error("❌ Download error:", response.status, errorText);
+        throw new Error(`Download failed: ${response.status} ${response.statusText}`);
       }
 
+      // Create BLOB from response
       const blob = await response.blob();
-      const url = window.URL.createObjectURL(blob);
+      console.log("✅ Certificate blob created, size:", blob.size, "bytes");
+
+      if (blob.size === 0) {
+        throw new Error("Downloaded file is empty");
+      }
+
+      // Create download link
+      const urlBlob = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
-      a.download = `Certificate_${courseTitle.replace(/\s+/g, '_')}.pdf`;
+      a.href = urlBlob;
+      a.download = `GATEHUB_Certificate_${enrollment.course.title.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`;
       document.body.appendChild(a);
       a.click();
-      window.URL.revokeObjectURL(url);
-      document.body.removeChild(a);
-      toast({ title: "Certificate downloaded!", variant: "success" });
+      
+      // Cleanup
+      setTimeout(() => {
+        document.body.removeChild(a);
+        window.URL.revokeObjectURL(urlBlob);
+      }, 100);
+      
+      toast({ title: "Certificate downloaded successfully!", variant: "success" });
     } catch (err: any) {
-      toast({ title: "Download failed", description: err.message, variant: "destructive" });
+      console.error("❌ Certificate download error:", err);
+      toast({ 
+        title: "Download failed", 
+        description: err.message || "Please try again later", 
+        variant: "destructive" 
+      });
     } finally {
       setDownloadingId(null);
     }
   };
+
 
   return (
     <div className="max-w-6xl mx-auto space-y-10 pb-20">
@@ -122,43 +150,54 @@ export function CertificatesPage() {
         </Card>
       ) : (
         <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
-          {certificates.map((cert) => (
-            <Card key={cert.id} className="group overflow-hidden border-border/40 hover:border-primary/40 hover:shadow-xl hover:shadow-primary/5 transition-all duration-300 flex flex-col">
-              <div className="aspect-[16/10] relative overflow-hidden flex items-center justify-center bg-slate-950">
+          {certificates.map((enrollment) => (
+            <Card key={enrollment.id} className="group overflow-hidden border-border/40 hover:border-primary/40 hover:shadow-xl hover:shadow-primary/5 transition-all duration-300 flex flex-col backdrop-blur-sm bg-card/80">
+              <div className="aspect-[16/10] relative overflow-hidden flex items-center justify-center bg-gradient-to-br from-slate-900 to-slate-800">
                 <img 
-                  src={cert.course.thumbnail || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=60"} 
-                  className="max-h-full max-w-full object-contain transition-transform duration-700 group-hover:scale-110 opacity-80 group-hover:opacity-100"
-                  alt={cert.course.title}
+                  src={enrollment.course.thumbnail || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=60"} 
+                  className="max-h-full max-w-full object-contain transition-transform duration-700 group-hover:scale-110 opacity-90 group-hover:opacity-100"
+                  alt={enrollment.course.title}
+                  onError={(e) => {
+                    // Fallback to default image if thumbnail fails to load
+                    const target = e.target as HTMLImageElement;
+                    if (!target.src.includes("unsplash.com")) {
+                      target.src = "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=60";
+                    }
+                  }}
                 />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent" />
                 <div className="absolute bottom-4 left-4 right-4">
                   <div className="flex items-center gap-2 text-white/90 text-xs font-bold uppercase tracking-widest mb-1">
                     <Calendar className="w-3 h-3" />
-                    Issued {new Date(cert.issuedAt).toLocaleDateString(undefined, { year: 'numeric', month: 'short' })}
+                    Completed {new Date(enrollment.completedAt!).toLocaleDateString(undefined, { year: 'numeric', month: 'short' })}
                   </div>
-                  <h3 className="text-white font-black text-lg leading-tight line-clamp-2">{cert.course.title}</h3>
+                  <h3 className="text-white font-black text-lg leading-tight line-clamp-2">{enrollment.course.title}</h3>
                 </div>
-                <div className="absolute top-4 right-4 w-10 h-10 rounded-full bg-primary/90 backdrop-blur-sm flex items-center justify-center text-white shadow-lg">
-                  <Trophy className="w-5 h-5" />
+                <div className="absolute top-4 right-4 w-12 h-12 rounded-full bg-gradient-to-br from-yellow-400 to-amber-600 backdrop-blur-sm flex items-center justify-center text-white shadow-lg border border-white/20">
+                  <Trophy className="w-6 h-6" />
                 </div>
+                {/* Glassmorphism overlay */}
+                <div className="absolute inset-0 bg-white/5 backdrop-blur-[1px] opacity-0 group-hover:opacity-100 transition-opacity duration-300" />
               </div>
-              <CardContent className="p-5 flex-1 flex flex-col justify-between gap-4">
-                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">
-                  <span className="bg-primary/10 text-primary px-2 py-0.5 rounded-full">ID: {cert.certificateId}</span>
+              <CardContent className="p-5 flex-1 flex flex-col justify-between gap-4 backdrop-blur-sm bg-gradient-to-br from-white/5 to-transparent">
+                <div className="flex items-center gap-2 text-[10px] font-black uppercase tracking-widest text-muted-foreground/80">
+                  <span className="bg-gradient-to-r from-primary/20 to-primary/10 text-primary border border-primary/20 px-2 py-1 rounded-full backdrop-blur-sm">ID: {enrollment.id}</span>
                 </div>
                 
-                <Button 
-                  className="w-full h-12 rounded-xl font-bold shadow-lg shadow-primary/10 gap-2 group-hover:translate-y-[-2px] transition-all"
-                  onClick={() => handleDownload(cert.course.id, cert.course.title)}
-                  disabled={downloadingId === cert.course.id}
-                >
-                  {downloadingId === cert.course.id ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <Download className="w-4 h-4" />
-                  )}
-                  {downloadingId === cert.course.id ? "Generating PDF..." : "Download Certificate"}
-                </Button>
+                <div className="flex gap-2">
+                  <Button 
+                    className="w-full h-11 rounded-xl font-bold shadow-lg shadow-primary/10 gap-2 group-hover:translate-y-[-2px] transition-all duration-300 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary"
+                    onClick={() => handleDownload(enrollment)}
+                    disabled={downloadingId === enrollment.id}
+                  >
+                    {downloadingId === enrollment.id ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <Download className="w-4 h-4" />
+                    )}
+                    {downloadingId === enrollment.id ? "Generating..." : "Download Certificate"}
+                  </Button>
+                </div>
               </CardContent>
             </Card>
           ))}

@@ -1,9 +1,8 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
-import { ChevronDown, ChevronRight, Play, Download, CheckCircle, HelpCircle, ArrowLeft, Lock, FileText, Loader2, VideoOff, AlertCircle, Settings, Info } from "lucide-react";
-import ReactPlayer from "react-player";
+import { ChevronDown, ChevronRight, Play, Download, CheckCircle, HelpCircle, ArrowLeft, Lock, FileText, Loader2, AlertCircle, Info } from "lucide-react";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -16,49 +15,13 @@ import { useAuthStore } from "@/store/authStore";
 import { useToastStore } from "@/store/toastStore";
 import { Star } from "lucide-react";
 
-// --- VIDEO UTILS ---
-const isYouTube = (url: string) => {
-  return url.includes("youtube.com") || url.includes("youtu.be");
-};
-
-const isVimeo = (url: string) => {
-  return url.includes("vimeo.com");
-};
-
-const isDirectVideoFile = (url: string) => {
-  const commonExtensions = [".mp4", ".webm", ".ogg", ".mov", "/uploads/"];
-  return commonExtensions.some(ext => url.toLowerCase().includes(ext));
-};
-
-const formatYouTubeUrl = (url: string) => {
-  if (!isYouTube(url)) return url;
-  try {
-    const urlObj = new URL(url);
-    let videoId = "";
-    if (url.includes("youtu.be/")) {
-      videoId = urlObj.pathname.substring(1);
-    } else if (url.includes("youtube.com/embed/")) {
-      return url; // Already in embed format
-    } else {
-      videoId = urlObj.searchParams.get("v") || "";
-    }
-    
-    if (!videoId && url.includes("youtube.com/watch")) {
-       // Handle cases where v= might be missing but ID is in path or other params
-       videoId = urlObj.searchParams.get("v") || "";
-    }
-
-    return videoId ? `https://www.youtube.com/embed/${videoId}?autoplay=1&modestbranding=1&rel=0` : url;
-  } catch (e) {
-    return url;
-  }
-};
 
 interface Lecture {
   id: string;
   title: string;
   type: string;
   videoUrl?: string | null;
+  videoType?: string | null;
   duration?: number | null;
   content?: string | null;
   quizId?: string | null;
@@ -66,21 +29,9 @@ interface Lecture {
   attachments: Array<{ id: string; name: string; url: string; type: string }>;
 }
 
-interface Section {
-  id: string;
-  title: string;
-  order: number;
-  lectures: Lecture[];
-}
+// Section interface is used inline, no need to declare separately
 
-interface CourseData {
-  course: {
-    id: string;
-    title: string;
-    sections: Section[];
-  };
-  progress: { percent: number; lectureProgress: Array<{ lectureId: string; completed: boolean }> } | null;
-}
+// Remove unused CourseData interface since we're using inline types
 
 export function CoursePlayerPage() {
   const { courseId } = useParams<{ courseId: string }>();
@@ -88,9 +39,7 @@ export function CoursePlayerPage() {
   const queryClient = useQueryClient();
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({});
   const [currentLecture, setCurrentLecture] = useState<Lecture | null>(null);
-  const [isVideoBuffering, setIsVideoBuffering] = useState(false);
   const [isVideoError, setIsVideoError] = useState(false);
-  const [playerReady, setPlayerReady] = useState(false);
   const toast = useToastStore((s) => s.add);
   const { user } = useAuthStore();
   const [showReviewModal, setShowReviewModal] = useState(false);
@@ -98,10 +47,11 @@ export function CoursePlayerPage() {
   const [reviewText, setReviewText] = useState("");
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   const [pdfUrl, setPdfUrl] = useState<string | null>(null);
-  const [isPdfLoading, setIsPdfLoading] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [isDownloadingCertificate, setIsDownloadingCertificate] = useState(false);
   const [showDebug, setShowDebug] = useState(false);
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [hideSidebar, setHideSidebar] = useState(false);
 
   // Quiz State
   const [currentQuiz, setCurrentQuiz] = useState<any>(null);
@@ -109,32 +59,37 @@ export function CoursePlayerPage() {
   const [quizSubmitted, setQuizSubmitted] = useState(false);
   const [quizResult, setQuizResult] = useState<{ score: number, totalMarks: number, results: any[] } | null>(null);
 
-  // 1. Query Course Data (for all users - no enrollment check)
-  const { data: courseData, isLoading: courseLoading } = useQuery({
-    queryKey: ["course", courseId],
+  // 1. Query Course Data using the dedicated learn endpoint
+  const { data: courseLearnData, isLoading: courseLoading, error: courseError } = useQuery({
+    queryKey: ["course-learn", courseId],
     queryFn: async () => {
-      const res = await api<any>(`/courses/${courseId}`);
-      if (res.error) throw new Error(res.error);
-      return res.data.course;
+      console.log("FETCH START");
+      console.log("COURSE ID:", courseId);
+      
+      const res = await api<any>(`/courses/${courseId}/learn`);
+      console.log("API RESPONSE:", res);
+      
+      if (res.error) {
+        console.error("API ERROR:", res.error);
+        throw new Error(res.error);
+      }
+      return res.data;
     },
     enabled: !!courseId,
+    retry: 2,
+    staleTime: 5 * 60 * 1000, // 5 minutes
+    placeholderData: (previousData) => previousData, // CRITICAL FIX: Prevent data loss on navigation
   });
 
-  // 2. Query Enrollment Data (only for logged-in users)
-  const { data: enrollmentData, isLoading: enrollmentLoading } = useQuery({
-    queryKey: ["enrollment", courseId, "progress"],
-    queryFn: async () => {
-      const res = await api<{ enrollment: { course: CourseData["course"]; progress: CourseData["progress"] } }>(`/enrollments/${courseId}/progress`);
-      if (res.error) return null;
-      const enc = (res.data as { enrollment?: { course: CourseData["course"]; progress: CourseData["progress"] } })?.enrollment;
-      return enc ? { course: enc.course, progress: enc.progress ?? null } as CourseData : null;
-    },
-    enabled: !!courseId && !!user,
-  });
+  // Extract data from the learn endpoint response
+  const courseData = courseLearnData?.course;
+  const enrollmentData = courseLearnData?.enrollment ? {
+    course: courseLearnData.course,
+    progress: courseLearnData.progress
+  } : null;
 
-  const isLoading = courseLoading || (user && enrollmentLoading);
+  const isLoading = courseLoading;
   const data = enrollmentData; // Use enrolled data if available, otherwise null
-  const isEnrolled = !!enrollmentData;
 
   const { data: reviewsData, refetch: refetchReviews } = useQuery({
     queryKey: ["reviews", courseId],
@@ -156,14 +111,22 @@ export function CoursePlayerPage() {
 
   // 2. Computed Values
   const currentCourse = data?.course || courseData;
-  const allLectures = currentCourse?.sections?.flatMap((s) => s.lectures) ?? [];
+  const allLectures = currentCourse?.sections?.flatMap((s: any) => s.lectures) ?? [];
   const firstLecture = allLectures[0];
   const isCourseCompleted = data?.progress?.percent === 100;
 
-  // 3. Access Control Logic
-  const canViewFullContent = isEnrolled;
-  const canViewFirstLecture = !user || isEnrolled; // Everyone can see first lecture preview
-  const canViewPartialNotes = user && !isEnrolled; // Logged in but not enrolled can see partial notes
+  // 3. Access Control Logic - if course is completed, user must be enrolled
+  const isEnrolled = !!enrollmentData || isCourseCompleted;
+  
+  // Debug logging for enrollment status
+  console.log("ENROLLMENT DEBUG:", {
+    enrollmentData: !!enrollmentData,
+    isCourseCompleted,
+    isEnrolled,
+    progressPercent: data?.progress?.percent,
+    userLoggedIn: !!user,
+    courseId
+  });
   
   // If course is 100% and no specific lecture is active, or if we want to show completion UI
   const [showCompletionUI, setShowCompletionUI] = useState(false);
@@ -201,27 +164,18 @@ export function CoursePlayerPage() {
         title: activeLecture.title,
         type: activeLecture.type,
         videoUrl: activeLecture.videoUrl,
-        isYT: activeLecture.videoUrl ? isYouTube(activeLecture.videoUrl) : false,
-        isVimeo: activeLecture.videoUrl ? isVimeo(activeLecture.videoUrl) : false,
-        isDirect: activeLecture.videoUrl ? isDirectVideoFile(activeLecture.videoUrl) : false,
       });
     }
   }, [activeLecture?.id]);
 
-  const currentIndex = activeLecture ? allLectures.findIndex((l) => l.id === activeLecture.id) : -1;
-  const nextLecture = currentIndex >= 0 && currentIndex < allLectures.length - 1 ? allLectures[currentIndex + 1] : null;
 
-  const playerRef = useRef<ReactPlayer>(null);
+
+  const currentIndex = activeLecture ? allLectures.findIndex((l: any) => l.id === activeLecture.id) : -1;
+  const nextLecture = currentIndex >= 0 && currentIndex < allLectures.length - 1 ? allLectures[currentIndex + 1] : null;
   const [playbackRate, setPlaybackRate] = useState(1);
 
-  // Reset video states upon lecture change
-  useEffect(() => {
-    setIsVideoBuffering(false);
-    setIsVideoError(false);
-    setPlayerReady(false);
-  }, [activeLecture?.id]);
-
-  // 3. Effects
+  // Check if current lecture is video for fullscreen layout
+  const isVideoLecture = activeLecture?.type === "video";
   useEffect(() => {
     async function fetchQuiz() {
       if (activeLecture?.type === "quiz" && activeLecture?.id) {
@@ -243,59 +197,75 @@ export function CoursePlayerPage() {
   }, [activeLecture?.id, activeLecture?.type]);
 
   useEffect(() => {
-    if (activeLecture?.type === "notes" && activeLecture.content) {
-      const fetchPdf = async () => {
-        setIsPdfLoading(true);
+    // CRITICAL FIX: Use compiledPdfUrl ONLY - NEVER compile on student side
+    const lectureId = activeLecture?.id;
+    const compiledPdfUrl = activeLecture?.compiledPdfUrl;
+    
+    console.log("STUDENT PDF DEBUG:", {
+      lectureId,
+      compiledPdfUrl,
+      lectureType: activeLecture?.type,
+      lectureTitle: activeLecture?.title
+    });
+    
+    if (!lectureId) {
+      setPdfUrl(null);
+      setPdfError(null);
+      return;
+    }
+    
+    if (activeLecture?.type === "notes") {
+      if (compiledPdfUrl) {
+        // Use compiledPdfUrl as static file - works without backend server
+        const baseUrl = compiledPdfUrl.startsWith('http') 
+          ? compiledPdfUrl 
+          : `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}${compiledPdfUrl}`;
+        
+        // Fallback to local file if backend is not running
+        const staticFileUrl = compiledPdfUrl.startsWith('/uploads/') 
+          ? compiledPdfUrl.replace('/uploads/', '/public/uploads/')
+          : compiledPdfUrl;
+        
+        // Premium access logic
+        const hasFullAccess = isEnrolled || isCourseCompleted;
+        
+        // Apply premium PDF restrictions - use static file as fallback
+        const finalPdfUrl = hasFullAccess 
+          ? `${baseUrl}#zoom=page-width&view=FitH`
+          : `${baseUrl}#page=1&zoom=page-fit&toolbar=0&navpanes=0&scrollbar=0`;
+        
+        // Try to use static file if backend URL fails
+        const finalUrl = finalPdfUrl.includes('localhost:5000') ? staticFileUrl : finalPdfUrl;
+        
+        console.log("✅ PDF ACCESS DEBUG:", {
+          hasFullAccess,
+          isEnrolled,
+          isCourseCompleted,
+          baseUrl,
+          finalPdfUrl
+        });
+        
+        setPdfUrl(finalPdfUrl);
         setPdfError(null);
-        try {
-          const authStoreStr = localStorage.getItem("lms-auth");
-          let token = "";
-          if (authStoreStr) {
-            const parsed = JSON.parse(authStoreStr);
-            token = parsed?.state?.token || "";
-          }
-
-          const res = await fetch("/api/latex/compile", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              ...(token ? { Authorization: `Bearer ${token}` } : {})
-            },
-            body: JSON.stringify({ 
-              code: activeLecture.content || " ", 
-              projectId: activeLecture.videoUrl || undefined 
-            })
-          });
-
-          if (!res.ok) {
-            const errData = await res.json().catch(() => ({}));
-            throw new Error(errData.error || errData.logs || "Failed to load PDF notes");
-          }
-
-          const data = await res.json();
-          if (!data.success || !data.pdfBase64) {
-             throw new Error(data.error || data.logs || "Compilation failed, no PDF generated.");
-          }
-
-          const resBlob = await fetch(`data:application/pdf;base64,${data.pdfBase64}`);
-          const blob = await resBlob.blob();
-          const url = URL.createObjectURL(blob);
-          
-          setPdfUrl(prev => {
-            if (prev) URL.revokeObjectURL(prev);
-            return url;
-          });
-        } catch(e: any) {
-           setPdfError(e.message);
-        } finally {
-           setIsPdfLoading(false);
-        }
-      };
-      fetchPdf();
+      } else {
+        console.log("❌ No compiledPdfUrl found");
+        setPdfUrl(null);
+        setPdfError("No PDF URL received - Instructor needs to compile notes first");
+      }
     } else {
       setPdfUrl(null);
+      setPdfError(null);
     }
-  }, [activeLecture?.id, activeLecture?.content, activeLecture?.type]);
+  }, [activeLecture?.id, activeLecture?.compiledPdfUrl, activeLecture?.type]);
+
+  // Auto-collapse sidebar for notes viewing
+  useEffect(() => {
+    if (activeLecture?.type === "notes") {
+      setIsSidebarCollapsed(true);
+    } else {
+      setIsSidebarCollapsed(false);
+    }
+  }, [activeLecture?.type]);
 
   useEffect(() => {
     const firstId = data?.course?.sections?.[0]?.id;
@@ -304,7 +274,7 @@ export function CoursePlayerPage() {
 
   useEffect(() => {
     if (activeLecture && (activeLecture.type === "notes" || activeLecture.type === "file" || activeLecture.type === "article")) {
-      const isCompleted = data?.progress?.lectureProgress?.some((p) => p.lectureId === activeLecture.id && p.completed);
+      const isCompleted = data?.progress?.lectureProgress?.some((p: any) => p.lectureId === activeLecture.id && p.completed);
       if (!isCompleted) {
         updateProgress.mutate({ lectureId: activeLecture.id, completed: true, progressPercent: 100 });
       }
@@ -342,6 +312,7 @@ export function CoursePlayerPage() {
 
   const handleDownloadCertificate = async () => {
     if (!courseId) return;
+    console.log("🔥 CERTIFICATE DOWNLOAD START:", { courseId, userLoggedIn: !!user });
     setIsDownloadingCertificate(true);
     try {
       const authStoreStr = localStorage.getItem("lms-auth");
@@ -351,19 +322,25 @@ export function CoursePlayerPage() {
         token = parsed?.state?.token || "";
       }
 
-      const response = await fetch(`/api/certificates/course/${courseId}/generate`, {
+      const response = await fetch(`/api/certificates/generate`, {
         method: "POST",
         headers: {
+          "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {})
-        }
+        },
+        body: JSON.stringify({ courseId })
       });
 
+      console.log("🔥 CERTIFICATE RESPONSE STATUS:", response.status);
+      
       if (!response.ok) {
         const err = await response.json();
+        console.error("🔥 CERTIFICATE ERROR:", err);
         throw new Error(err.error || "Failed to download certificate");
       }
 
       const blob = await response.blob();
+      console.log("🔥 CERTIFICATE BLOB SIZE:", blob.size);
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -380,108 +357,172 @@ export function CoursePlayerPage() {
     }
   };
 
-  if (!courseId || isLoading || !data?.course) {
+  // Timeout safety - show error if loading takes more than 5 seconds
+  useEffect(() => {
+    if (courseLoading) {
+      const timeout = setTimeout(() => {
+        console.error("Loading timeout - course data taking too long");
+        toast({ 
+          title: "Loading Timeout", 
+          description: "Course content is taking too long to load. Please refresh the page.", 
+          variant: "destructive" 
+        });
+      }, 5000); // 5 seconds
+
+      return () => clearTimeout(timeout);
+    }
+  }, [courseLoading, toast]);
+
+  // Handle errors properly
+  useEffect(() => {
+    if (courseError) {
+      console.error("Course loading error:", courseError);
+      toast({ 
+        title: "Error Loading Course", 
+        description: courseError.message || "Failed to load course content. Please try again.", 
+        variant: "destructive" 
+      });
+    }
+  }, [courseError, toast]);
+
+  if (!courseId || isLoading || !courseData) {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="animate-pulse text-muted-foreground flex flex-col items-center gap-4">
           <Loader2 className="w-10 h-10 animate-spin text-primary" />
           <p className="font-bold tracking-widest uppercase text-xs">Loading Course Content...</p>
+          {courseLoading && (
+            <p className="text-xs text-muted-foreground">If this takes too long, please refresh the page</p>
+          )}
         </div>
       </div>
     );
   }
 
+  // YouTube URL extraction function
+  const extractYouTubeId = (url: string): string | null => {
+    if (!url) return null;
+    
+    // Handle various YouTube URL formats
+    const patterns = [
+      /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/)([^&\n?#]+)/,
+      /youtube\.com\/watch\?.*v=([^&\n?#]+)/,
+    ];
+    
+    for (const pattern of patterns) {
+      const match = url.match(pattern);
+      if (match) return match[1];
+    }
+    
+    return null;
+  };
+
   const renderVideoPlayer = () => {
-    const rawUrl = activeLecture?.videoUrl?.trim() || "";
-    if (!rawUrl) return null;
-
-    const formattedUrl = isYouTube(rawUrl) ? formatYouTubeUrl(rawUrl) : rawUrl;
-
-    if (isDirectVideoFile(rawUrl)) {
-      // For uploaded videos, ensure we use the full API URL if it's a relative path
-      const videoSrc = rawUrl.startsWith('http') ? rawUrl : `${window.location.origin}/api${rawUrl.startsWith('/') ? '' : '/'}${rawUrl}`;
-      
+    const videoUrl = activeLecture?.videoUrl?.trim() || "";
+    const videoType = activeLecture?.videoType || "";
+    
+    // Add debug logging for video data
+    console.log("🎥 VIDEO DATA:", activeLecture);
+    console.log("🎥 VIDEO URL:", videoUrl);
+    console.log("🎥 VIDEO TYPE:", videoType);
+    console.log("🎥 LECTURE ID:", activeLecture?.id);
+    
+    if (!videoUrl && videoType !== "upload" && !user?.instructor) {
+      console.log("🎥 No video URL and not upload type - showing No video available");
       return (
-        <video 
-          key={videoSrc}
-          controls 
-          autoPlay 
-          className="w-full h-full object-contain"
-          onEnded={() => updateProgress.mutate({ lectureId: activeLecture!.id, completed: true, progressPercent: 100, autoNext: true })}
-          onError={(e) => {
-            console.error("[NATIVE_VIDEO_ERROR]", e);
-            setIsVideoError(true);
-          }}
-          onCanPlay={() => {
-            console.log("[NATIVE_VIDEO_READY]", videoSrc);
-            setPlayerReady(true);
-          }}
-          onLoadStart={() => {
-            console.log("[NATIVE_VIDEO_LOADING]", videoSrc);
-            setPlayerReady(false);
-          }}
-        >
-          <source src={videoSrc} type="video/mp4" />
-          Your browser does not support the video tag.
-        </video>
+        <div className="w-full h-full flex items-center justify-center text-white">
+          No video available
+        </div>
       );
     }
 
+    if (videoType === "youtube") {
+      const videoId = extractYouTubeId(videoUrl);
+      console.log("🎥 YouTube video ID extracted:", videoId);
+      console.log("🎥 Original YouTube URL:", videoUrl);
+      
+      if (!videoId) {
+        console.log("🎥 Invalid YouTube URL format");
+        return (
+          <div className="w-full h-full flex items-center justify-center text-white">
+            <div className="text-center">
+              <p className="text-red-400 mb-2">Invalid YouTube URL</p>
+              <p className="text-sm text-gray-400">{videoUrl}</p>
+            </div>
+          </div>
+        );
+      }
+      
+      const embedUrl = `https://www.youtube.com/embed/${videoId}?rel=0&showinfo=0&modestbranding=1&autoplay=0`;
+      console.log("🎥 YouTube embed URL:", embedUrl);
+      
+      return (
+        <iframe
+          src={embedUrl}
+          className="w-full h-full"
+          allowFullScreen
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+          title={activeLecture?.title || "YouTube Video"}
+          onError={(e) => console.error("🎥 YouTube iframe error:", e)}
+          onLoad={() => console.log("🎥 YouTube iframe loaded")}
+        />
+      );
+    }
+
+    // Unify video source logic - use direct file paths for uploaded videos like notes
+    const actualVideoUrl = videoType === "youtube"
+      ? videoUrl
+      : videoUrl 
+        ? (videoUrl.startsWith('http') 
+            ? videoUrl 
+            : `${import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000'}/uploads/${videoUrl}`)
+        : null;
+
+    console.log("🎥 ACTUAL VIDEO URL:", actualVideoUrl);
+    console.log("🎥 RENDERING UPLOAD VIDEO");
+
     return (
-      <ReactPlayer
-        key={formattedUrl}
-        ref={playerRef}
-        url={formattedUrl}
-        width="100%"
-        height="100%"
-        playing={true}
-        controls={true}
-        playbackRate={playbackRate}
-        onReady={() => {
-          console.log("[REACT_PLAYER_READY]", formattedUrl);
-          setPlayerReady(true);
-          setIsVideoBuffering(false);
-        }}
-        onStart={() => {
-          console.log("[REACT_PLAYER_START]", formattedUrl);
-          setPlayerReady(true);
-          setIsVideoBuffering(false);
-        }}
-        onBuffer={() => setIsVideoBuffering(true)}
-        onBufferEnd={() => setIsVideoBuffering(false)}
-        onError={(e) => {
-          console.error("[REACT_PLAYER_ERROR]", e, formattedUrl);
-          setIsVideoError(true);
-        }}
-        onEnded={() => updateProgress.mutate({ lectureId: activeLecture!.id, completed: true, progressPercent: 100, autoNext: true })}
-        config={{
-          youtube: {
-            playerVars: { 
-              autoplay: 1, 
-              modestbranding: 1, 
-              rel: 0,
-              showinfo: 0,
-              controls: 1,
-              origin: window.location.origin
-            }
-          },
-          file: {
-            attributes: {
-              controlsList: "nodownload",
-              onContextMenu: (e: any) => e.preventDefault(),
-              crossOrigin: "anonymous",
-              style: { width: '100%', height: '100%', objectFit: 'contain' }
-            }
-          }
-        }}
-      />
+      <div className="w-full h-full relative">
+        <video
+          controls
+          preload="metadata"
+          className="w-full h-full object-contain bg-black"
+          onError={(e) => {
+            console.error("🎥 Video error:", e);
+            console.error("🎥 Video src:", actualVideoUrl);
+            console.error("🎥 Error details:", e.target?.error);
+          }}
+          onLoadStart={() => console.log("🎥 Video loading started")}
+          onCanPlay={() => console.log("🎥 Video can play")}
+          onLoadedData={() => console.log("🎥 Video data loaded")}
+          onStalled={() => console.log("🎥 Video stalled")}
+          onSuspend={() => console.log("🎥 Video suspended")}
+          onAbort={() => console.log("🎥 Video aborted")}
+          onEmptied={() => console.log("🎥 Video emptied")}
+        >
+          <source src={actualVideoUrl} type="video/mp4" />
+          <source src={actualVideoUrl} type="video/webm" />
+          <source src={actualVideoUrl} type="video/ogg" />
+          Your browser does not support the video tag.
+        </video>
+        
+        {/* Debug overlay for uploaded videos */}
+        <div className="absolute bottom-2 left-2 bg-black/80 text-white text-xs p-2 rounded max-w-xs">
+          <div>🎥 Upload Video</div>
+          <div className="truncate">{actualVideoUrl}</div>
+        </div>
+      </div>
     );
   };
 
   return (
-    <div className="flex flex-col xl:flex-row h-screen w-full overflow-hidden bg-background">
-      {/* Left: Curriculum */}
-      <aside className="w-full xl:w-80 shrink-0 border-r border-border/50 bg-card/30 overflow-hidden flex flex-col max-h-[400px] xl:max-h-none">
+    <div className={`flex ${isVideoLecture ? "w-full" : "flex-col xl:flex-row"} h-screen w-full overflow-hidden bg-background`}>
+      {/* Left: Curriculum - Hide for video lectures when hideSidebar is true, otherwise show for non-video lectures */}
+      {(!isVideoLecture || (isVideoLecture && !hideSidebar)) && (
+        <aside className={cn(
+          "transition-all duration-300 ease-in-out shrink-0 border-r border-border/50 bg-card/30 overflow-hidden flex flex-col max-h-[400px] xl:max-h-none",
+          isSidebarCollapsed ? "xl:w-0 w-0" : "xl:w-80 w-full"
+        )}>
         <div className="p-4 border-b flex items-center justify-between bg-card/50">
           <Button 
             variant="ghost" 
@@ -506,7 +547,7 @@ export function CoursePlayerPage() {
           <div className="flex flex-col">
             <span className="font-bold text-foreground">Course Content</span>
             <div className="flex items-center gap-2">
-               <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{data.progress?.percent ?? 0}% completed</span>
+               <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">{data?.progress?.percent ?? 0}% completed</span>
                {isCourseCompleted && (
                  <span className="px-1.5 py-0.5 rounded-full bg-green-500/10 text-green-600 text-[8px] font-bold uppercase tracking-tighter border border-green-500/20">
                     Completed
@@ -514,7 +555,7 @@ export function CoursePlayerPage() {
                )}
             </div>
           </div>
-          {data.progress?.percent === 100 && (
+          {data?.progress?.percent === 100 && (
             <Button 
               size="sm" 
               variant="outline"
@@ -551,7 +592,7 @@ export function CoursePlayerPage() {
               Course Completion
             </button>
           )}
-          {data.course.sections.map((section) => (
+          {data?.course?.sections?.map((section: any) => (
             <div key={section.id}>
               <button
                 className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm font-medium text-foreground hover:bg-muted/50"
@@ -563,8 +604,8 @@ export function CoursePlayerPage() {
               <AnimatePresence>
                 {openSections[section.id] !== false && (
                   <motion.div initial={{ height: 0 }} animate={{ height: "auto" }} exit={{ height: 0 }} className="overflow-hidden">
-                    {section.lectures.map((lec, lectureIndex) => {
-                      const isCompleted = data?.progress?.lectureProgress?.some((p) => p.lectureId === lec.id && p.completed);
+                    {section.lectures.map((lec: any, lectureIndex: number) => {
+                      const isCompleted = data?.progress?.lectureProgress?.some((p: any) => p.lectureId === lec.id && p.completed);
                       const isActive = activeLecture?.id === lec.id;
                       
                       // Access Control Logic
@@ -638,9 +679,25 @@ export function CoursePlayerPage() {
           ))}
         </div>
       </aside>
+      )}
 
       {/* Center: Video / Content */}
-      <div className="flex-1 flex flex-col min-h-0 overflow-hidden bg-background relative">
+      <div className={cn(
+        "flex-1 flex flex-col min-h-0 overflow-hidden bg-background relative transition-all duration-300 ease-in-out",
+        activeLecture?.type === "notes" ? "bg-black" : "bg-background"
+      )}>
+        {/* Sidebar Toggle Button - Only show for notes */}
+        {activeLecture?.type === "notes" && (
+          <button
+            onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+            className="absolute top-4 left-4 z-50 bg-background/80 backdrop-blur-sm border border-border text-foreground hover:bg-background transition-all duration-200 rounded-lg p-2 flex items-center gap-2 shadow-lg"
+          >
+            <ChevronRight className={cn("w-4 h-4 transition-transform", !isSidebarCollapsed && "rotate-180")} />
+            <span className="text-sm font-medium">
+              {isSidebarCollapsed ? "Show Sidebar" : "Hide Sidebar"}
+            </span>
+          </button>
+        )}
         {/* Debug UI Overlay */}
         {showDebug && (
           <div className="absolute top-4 left-4 z-[100] bg-black/90 text-white p-4 rounded-xl border border-white/20 text-[10px] font-mono max-w-md pointer-events-none">
@@ -649,8 +706,8 @@ export function CoursePlayerPage() {
             <p>Lecture ID: {activeLecture?.id}</p>
             <p>Type: {activeLecture?.type}</p>
             <p className="break-all">URL: {activeLecture?.videoUrl || "NULL"}</p>
-            <p>Format: {activeLecture?.videoUrl ? (isYouTube(activeLecture.videoUrl) ? "YouTube" : isDirectVideoFile(activeLecture.videoUrl) ? "Direct File" : "Other") : "N/A"}</p>
-            <p>Ready: {playerReady ? "YES" : "NO"}</p>
+            <p>Format: {activeLecture?.videoUrl ? "Video URL Available" : "N/A"}</p>
+            <p>Ready: YES</p>
             <p>Error: {isVideoError ? "YES" : "NO"}</p>
             <p>Show Completion UI: {showCompletionUI ? "YES" : "NO"}</p>
           </div>
@@ -670,8 +727,8 @@ export function CoursePlayerPage() {
                 <Card className="border-2 border-primary/20 shadow-xl overflow-hidden bg-card/50 backdrop-blur-sm">
                    <CardContent className="p-8 space-y-6">
                       <div className="space-y-2">
-                         <h2 className="text-2xl font-bold">{data.course.title}</h2>
-                         <p className="text-sm text-muted-foreground uppercase tracking-widest font-semibold">with Instructor {data.course.sections[0]?.lectures[0]?.content ? "Team" : "Instructor"}</p>
+                         <h2 className="text-2xl font-bold">{data?.course?.title}</h2>
+                         <p className="text-sm text-muted-foreground uppercase tracking-widest font-semibold">with Instructor {data?.course?.sections[0]?.lectures[0]?.content ? "Team" : "Instructor"}</p>
                       </div>
 
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4">
@@ -768,6 +825,16 @@ export function CoursePlayerPage() {
           </div>
         ) : activeLecture?.type === "video" ? (
           <div className="flex-1 flex flex-col bg-slate-950 relative">
+            {/* Sidebar Toggle Button - Show for video lectures */}
+            <button
+              onClick={() => setHideSidebar(!hideSidebar)}
+              className="absolute top-4 left-4 z-50 bg-background/80 backdrop-blur-sm border border-border text-foreground hover:bg-background transition-all duration-200 rounded-lg p-2 flex items-center gap-2 shadow-lg"
+            >
+              <ChevronRight className={cn("w-4 h-4 transition-transform", !hideSidebar && "rotate-180")} />
+              <span className="text-sm font-medium">
+                {hideSidebar ? "Show Sidebar" : "Hide Sidebar"}
+              </span>
+            </button>
             <div className="flex-1 w-full relative bg-black flex items-center justify-center">
               {/* Access Control: Check if user can view this video */}
               {(() => {
@@ -802,14 +869,14 @@ export function CoursePlayerPage() {
                 <>
                   {isVideoError || !activeLecture.videoUrl ? (
                     <div className="flex flex-col items-center justify-center text-muted-foreground gap-4 z-20">
-                      <VideoOff className="w-16 h-16 text-destructive/80" />
+                      <AlertCircle className="w-16 h-16 text-destructive/80" />
                       <p className="text-xl font-bold text-slate-300">
                         {!activeLecture.videoUrl ? "No video URL provided." : "Video failed to load."}
                       </p>
                       {isVideoError && (
                         <>
                           <p className="text-sm text-center max-w-md">The video source may be invalid or restricted. Check the URL below.</p>
-                          <Button variant="outline" onClick={() => { setIsVideoError(false); setPlayerReady(false); }}>
+                          <Button variant="outline" onClick={() => { setIsVideoError(false); }}>
                             Retry Player
                           </Button>
                         </>
@@ -823,23 +890,8 @@ export function CoursePlayerPage() {
                   ) : (
                     <>
                       <div className="absolute inset-0 z-10 w-full h-full">
+                        {/* Video player rendered directly */}
                         {renderVideoPlayer()}
-                        
-                        {/* Instant Loading Overlay */}
-                        {!playerReady && !isVideoError && (
-                          <div className="absolute inset-0 bg-black flex flex-col items-center justify-center gap-4 z-30">
-                            <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                            <span className="text-white text-sm">Loading video...</span>
-                          </div>
-                        )}
-                        
-                        {/* Buffering Overlay */}
-                        {isVideoBuffering && playerReady && (
-                          <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center gap-4 z-30">
-                            <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                            <span className="text-white text-sm">Buffering...</span>
-                          </div>
-                        )}
                       </div>
 
                       {/* Video Controls Overlay */}
@@ -848,7 +900,7 @@ export function CoursePlayerPage() {
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => setPlaybackRate(prev => prev === 2 ? 0.5 : prev + 0.25)}
+                            onClick={() => setPlaybackRate((prev: number) => prev === 2 ? 0.5 : prev + 0.25)}
                             className="text-white hover:bg-white/20 h-6 px-2 text-xs font-mono"
                           >
                             {playbackRate}x
@@ -1079,8 +1131,8 @@ export function CoursePlayerPage() {
           <div className="flex-1 overflow-auto p-10 lg:p-16 bg-slate-100 dark:bg-slate-900 flex flex-col items-center">
             <h2 className="text-4xl font-bold mb-6 font-display text-foreground tracking-tight w-full max-w-5xl">{activeLecture?.title}</h2>
             
-            {/* Access Control for Notes Content */}
-            {(() => {
+            {/* Access Control for Notes Content - Only show enrollment prompt for non-enrolled, non-completed users, but bypass for instructors */}
+            {(!isEnrolled && !isCourseCompleted && !user?.instructor) && (() => {
               const isFirstLecture = currentCourse?.sections?.[0]?.lectures?.[0]?.id === activeLecture.id;
               if (!user) {
                 // Not logged in - only first lecture preview
@@ -1092,7 +1144,7 @@ export function CoursePlayerPage() {
                     />
                   );
                 }
-              } else if (!isEnrolled) {
+              } else {
                 // Logged in but not enrolled - partial notes access
                 if (!isFirstLecture) {
                   return (
@@ -1103,37 +1155,145 @@ export function CoursePlayerPage() {
                   );
                 }
               }
-              // User can view this content
               return null;
             })()}
             
             {/* Show notes if user has access */}
-            {((isEnrolled) || (!user && currentCourse?.sections?.[0]?.lectures?.[0]?.id === activeLecture.id) || (user && !isEnrolled && currentCourse?.sections?.[0]?.lectures?.[0]?.id === activeLecture.id)) && (
-              <div className="flex-1 w-full max-w-5xl bg-white dark:bg-slate-950 rounded-xl shadow-lg border border-border/50 overflow-hidden relative min-h-[600px]">
-                {isPdfLoading ? (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-4">
-                    <Loader2 className="w-8 h-8 animate-spin text-primary" />
-                    <p>Compiling PDF Notes...</p>
-                  </div>
-                ) : pdfError ? (
-                  <div className="absolute inset-0 flex flex-col items-center justify-center text-muted-foreground gap-4">
-                    <AlertCircle className="w-8 h-8 text-destructive" />
-                    <p>Failed to load PDF: {pdfError}</p>
-                  </div>
-                ) : pdfUrl ? (
-                  <iframe src={`${pdfUrl}#toolbar=0`} className="w-full h-full border-none" />
-                ) : (
-                  <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-                    No notes content provided.
-                  </div>
-                )}
+            {(isEnrolled || !user || currentCourse?.sections?.[0]?.lectures?.[0]?.id === activeLecture.id) && (
+              <div className="w-full h-[calc(100vh-80px)] flex justify-center items-center p-4">
+                <div className="w-full max-w-6xl h-full bg-white rounded-xl shadow-2xl overflow-hidden">
+                  {pdfError ? (
+                    <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-4">
+                      <AlertCircle className="w-8 h-8 text-destructive" />
+                      <p className="text-center px-4">{pdfError}</p>
+                    </div>
+                  ) : pdfUrl ? (
+                    <>
+                      <iframe 
+                        src={pdfUrl}
+                        className={cn(
+                          "w-full h-full border-none",
+                          !(isEnrolled || isCourseCompleted) && "pointer-events-none"
+                        )}
+                        title="PDF Notes"
+                      />
+                      
+                      {/* Premium Overlay for Restricted Users */}
+                      {!(isEnrolled || isCourseCompleted) && (
+                        <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center text-white z-10 backdrop-blur-sm">
+                          <div className="text-center space-y-4">
+                            <div className="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center mb-4">
+                              <FileText className="w-8 h-8" />
+                            </div>
+                            <h3 className="text-xl font-bold">🔒 Enroll to unlock full notes</h3>
+                            <p className="text-white/80 max-w-sm">
+                              Get access to complete course materials, downloadable PDFs, and study resources
+                            </p>
+                            <button
+                              onClick={() => navigate(`/course/${courseId}`)}
+                              className="bg-primary hover:bg-primary/90 px-6 py-3 rounded-lg font-bold transition-colors"
+                            >
+                              Enroll Now
+                            </button>
+                            <p className="text-xs text-white/60">
+                              First page preview • Full access requires enrollment
+                            </p>
+                          </div>
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div className="flex items-center justify-center h-full text-muted-foreground">
+                      <div className="text-center">
+                        <FileText className="w-8 h-8 mx-auto mb-2" />
+                        <p>No notes content provided.</p>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
         ) : (
           <div className="flex-1 overflow-auto p-10 lg:p-16 bg-background">
             <h2 className="text-4xl font-bold mb-10 font-display text-foreground tracking-tight max-w-3xl mx-auto">{activeLecture?.title}</h2>
-            <div className="prose prose-slate dark:prose-invert prose-lg max-w-3xl mx-auto tracking-normal font-light leading-relaxed" dangerouslySetInnerHTML={{ __html: activeLecture?.content ?? "<p>No content available.</p>" }} />
+            
+            {/* Check if content contains LaTeX code and needs compilation */}
+            {(() => {
+              const content = activeLecture?.content;
+              
+              // Detect if content contains LaTeX commands
+              const isLatexContent = content && (
+                content.includes('\\documentclass') ||
+                content.includes('\\begin{') ||
+                content.includes('\\section{') ||
+                content.includes('\\chapter{') ||
+                content.includes('\\usepackage{')
+              );
+              
+              if (isLatexContent) {
+                // This is LaTeX content that should be compiled to PDF
+                return (
+                  <div className="w-full h-[calc(100vh-160px)] flex justify-center items-center">
+                    <div className="w-full max-w-6xl h-full bg-white rounded-xl shadow-2xl overflow-hidden">
+                      {pdfError ? (
+                        <div className="flex flex-col items-center justify-center h-full text-muted-foreground gap-4">
+                          <AlertCircle className="w-8 h-8 text-destructive" />
+                          <p className="text-center px-4">{pdfError}</p>
+                        </div>
+                      ) : pdfUrl ? (
+                        <>
+                          <iframe 
+                            src={pdfUrl}
+                            className={cn(
+                              "w-full h-full border-none",
+                              !(isEnrolled || isCourseCompleted) && "pointer-events-none"
+                            )}
+                            title="PDF Notes"
+                          />
+                          
+                          {/* Premium Overlay for Restricted Users */}
+                          {!(isEnrolled || isCourseCompleted) && (
+                            <div className="absolute inset-0 bg-black/60 flex flex-col items-center justify-center text-white z-10 backdrop-blur-sm">
+                              <div className="text-center space-y-4">
+                                <div className="w-16 h-16 bg-white/10 rounded-full flex items-center justify-center mb-4">
+                                  <FileText className="w-8 h-8" />
+                                </div>
+                                <h3 className="text-xl font-bold">🔒 Enroll to unlock full notes</h3>
+                                <p className="text-white/80 max-w-sm">
+                                  Get access to complete course materials, downloadable PDFs, and study resources
+                                </p>
+                                <button
+                                  onClick={() => navigate(`/course/${courseId}`)}
+                                  className="bg-primary hover:bg-primary/90 px-6 py-3 rounded-lg font-bold transition-colors"
+                                >
+                                  Enroll Now
+                                </button>
+                                <p className="text-xs text-white/60">
+                                  First page preview • Full access requires enrollment
+                                </p>
+                              </div>
+                            </div>
+                          )}
+                        </>
+                      ) : (
+                        <div className="flex items-center justify-center h-full text-muted-foreground">
+                          <div className="text-center">
+                            <FileText className="w-8 h-8 mx-auto mb-2" />
+                            <p>Loading PDF notes...</p>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              }
+              
+              // Regular HTML content - display as normal
+              return (
+                <div className="prose prose-slate dark:prose-invert prose-lg max-w-3xl mx-auto tracking-normal font-light leading-relaxed" dangerouslySetInnerHTML={{ __html: content ?? "<p>No content available.</p>" }} />
+              );
+            })()}
           </div>
         )}
       </div>

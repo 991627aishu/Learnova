@@ -17,7 +17,7 @@ export const useThemeStore = create<ThemeState>()(
       setTheme: (theme) => set({ theme }),
     }),
     {
-      name: "learnova-theme",
+      name: "thegatehub-theme",
     }
   )
 );

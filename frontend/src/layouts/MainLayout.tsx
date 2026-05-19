@@ -38,7 +38,7 @@ const nav = [
 export function MainLayout() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, clearUser } = useUserStore();
+  const { user, logout } = useUserStore();
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
 
@@ -82,7 +82,7 @@ export function MainLayout() {
               animate={{ x: 0 }}
               exit={{ x: -256 }}
               transition={{ duration: 0.3, ease: "easeInOut" }}
-              className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-border/50 bg-card shadow-sm lg:translate-x-0"
+              className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-amber-500/20 bg-card shadow-sm lg:translate-x-0 ring-1 ring-amber-500/10"
             >
               <div className="flex h-full flex-col p-4">
                 <NavLink to="/instructor" className="mb-6 flex items-center justify-center">
@@ -97,7 +97,7 @@ export function MainLayout() {
                       className={({ isActive }) =>
                         cn(
                           "flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-colors",
-                          isActive ? "bg-primary/10 text-primary font-semibold" : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
+                          isActive ? "bg-amber-500/10 text-amber-500 font-semibold" : "text-muted-foreground hover:bg-secondary/50 hover:text-foreground"
                         )
                       }
                       onClick={() => setIsSidebarOpen(false)}
@@ -107,12 +107,12 @@ export function MainLayout() {
                     </NavLink>
                   ))}
                 </nav>
-                <div className="border-t border-border/50 pt-4">
+                <div className="border-t border-amber-500/20 pt-4">
                   <div className="mb-2 flex items-center gap-3 rounded-lg px-3 py-2">
                     <UnifiedAvatar 
                       user={user}
                       size="md"
-                      className="border border-border/50"
+                      className="border border-amber-500/30"
                     />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-foreground">{user?.firstName} {user?.lastName}</p>
@@ -120,7 +120,7 @@ export function MainLayout() {
                     </div>
                   </div>
                   <div className="flex items-center justify-between mt-2 mb-2">
-                    <Button variant="ghost" size="sm" className="flex-1 justify-start gap-2 text-muted-foreground hover:text-foreground" onClick={() => { clearUser(); navigate("/login"); }}>
+                    <Button variant="ghost" size="sm" className="flex-1 justify-start gap-2 text-muted-foreground hover:text-foreground" onClick={() => { logout(); navigate("/login"); }}>
                       <LogOut className="h-4 w-4" /> Sign out
                     </Button>
                     <ThemeToggle />

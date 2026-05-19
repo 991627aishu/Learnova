@@ -679,124 +679,52 @@ export async function compileLatexLocally(
   code: string,
   options: CompileOptions = {}
 ): Promise<LatexCompilationResult> {
+  console.log("🔥 Starting LaTeX compilation for workspace:", workspaceId);
+  
   const startTime = Date.now();
-  const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-  const maxPasses = options.maxPasses ?? MAX_PASSES;
-  const enableBibtex = options.enableBibtex ?? true;
-  const compilerFallback = options.compilerFallback ?? true;
-  
   const workspaceDir = getWorkspaceDir(workspaceId, options.workspaceSubdir);
-  const compilers: Array<'pdflatex' | 'xelatex' | 'lualatex'> = ['pdflatex', 'xelatex', 'lualatex'];
   
-  console.log("LaTeX compilation started:", { workspaceId, workspaceDir, maxPasses, enableBibtex });
-
+  // Create workspace directory
   await fsPromises.mkdir(workspaceDir, { recursive: true });
-  await fsPromises.mkdir(LATEX_PDF_UPLOAD_DIR, { recursive: true });
+  
+  // Clear previous artifacts
   await clearPreviousArtifacts(workspaceDir);
-
+  
   // Copy referenced images if needed
   if (options.copyReferencedImages) {
     await copyReferencedImages(code, workspaceDir);
   }
-
-  // Write project files if provided
-  if (options.projectFiles) {
-    for (const file of options.projectFiles) {
-      const filePath = path.join(workspaceDir, file.filename);
-      await fsPromises.mkdir(path.dirname(filePath), { recursive: true });
-      fs.writeFileSync(filePath, file.content, { encoding: "utf8" });
-    }
-  }
-
-  const texPath = path.join(workspaceDir, "main.tex");
-  const logPath = path.join(workspaceDir, "main.log");
-  const pdfPath = path.join(workspaceDir, "main.pdf");
-  const auxPath = path.join(workspaceDir, "main.aux");
-
-  // CRITICAL: Write EXACT content without ANY modification
-  console.log("LATEX INPUT:", code);
-  fs.writeFileSync(texPath, code, { encoding: "utf8" });
   
-  // Verify written content matches exactly
-  const writtenContent = fs.readFileSync(texPath, "utf8");
-  console.log("FILE CONTENT:", writtenContent);
-  console.log("CONTENT MATCHES:", writtenContent === code);
+  // Write main.tex file
+  const mainTexPath = path.join(workspaceDir, "main.tex");
+  await fsPromises.writeFile(mainTexPath, code, 'utf8');
   
-  const relativeWorkspacePath = getRelativeWorkspacePath(workspaceDir);
-  console.log("LaTeX files written:", { texPath, relativeWorkspacePath });
-
-  let finalResult: LatexCompilationResult | null = null;
-  let compilationSteps: CompilationStep[] = [];
-  let bibtexRun = false;
-  let passesCompleted = 0;
-  let usedCompiler: 'pdflatex' | 'xelatex' | 'lualatex' = 'pdflatex';
-
-  // Use ONLY pdflatex by default (no aggressive fallback)
-  console.log("Attempting compilation with pdflatex only");
-  usedCompiler = 'pdflatex';
+  // Run compilation
+  const result = await runPdflatexCompilation(workspaceDir, code, {
+    timeoutMs: options.timeoutMs || 60000,
+    maxPasses: options.maxPasses || 3,
+    enableBibtex: options.enableBibtex || false,
+    compilerFallback: options.compilerFallback || true
+  });
   
-  try {
-    // Use simplified pdflatex-only compilation
-    const compilationResult = await runPdflatexCompilation(
-      workspaceDir, 
-      code, 
-      enableBibtex
-    );
-    
-    compilationSteps = compilationResult.steps;
-    passesCompleted = 3; // Always 3 passes in pdflatex mode
-    bibtexRun = compilationResult.steps.some((step: CompilationStep) => step.name === 'bibtex');
-    
-    if (!compilationResult.success) {
-      throw new Error(compilationResult.error || `pdflatex compilation failed`);
-    }
-    
-    // Success!
-    const pdfPath = path.resolve(workspaceDir, "main.pdf"); // ABSOLUTE PATH ONLY
-    console.log("PDF PATH:", pdfPath);
-    console.log("PDF EXISTS:", fs.existsSync(pdfPath));
-    
-    const pdfBuffer = await fsPromises.readFile(pdfPath);
-    const compilationTime = Date.now() - startTime;
-    
-    console.log(`Compilation successful with pdflatex!`);
-    console.log(`3-pass compilation, BibTeX: ${bibtexRun}, Time: ${compilationTime}ms`);
-    
-    finalResult = {
-      success: true,
-      pdfPath,
-      logs: compilationSteps.map(step => `${step.name}:\n${step.output}`).join('\n\n'),
-      errors: [], // No errors on success
-      base64: Buffer.from(pdfBuffer).toString("base64"),
-      compilationTime,
-      compilerUsed: usedCompiler,
-      passesCompleted,
-      bibtexRun
-    };
-    
-  } catch (error: any) {
-    console.error(`pdflatex failed:`, error.message);
-    
-    const logs = compilationSteps.map(step => `${step.name}:\n${step.output}`).join('\n\n');
-    const finalLogs = await readLogs(logPath, logs);
-    
-    // Return error with REAL LaTeX messages only (no fake errors)
-    finalResult = {
-      success: false,
-      logs: finalLogs,
-      errors: parseLatexErrors(finalLogs), // Real errors only
-      compilationTime: Date.now() - startTime,
-      compilerUsed: usedCompiler,
-      passesCompleted,
-      bibtexRun
-    };
-  }
+  const compilationTime = Date.now() - startTime;
   
-  if (!finalResult) {
-    throw new Error("All compilers failed");
-  }
+  // Check if compilation succeeded
+  const success = isCompilationSuccessful(workspaceDir, result.output);
+  const pdfPath = success ? path.join(workspaceDir, "main.pdf") : undefined;
   
-  return finalResult;
+  console.log(`🔥 LaTeX compilation ${success ? 'SUCCESS' : 'FAILED'} in ${compilationTime}ms`);
+  
+  return {
+    success,
+    pdfPath,
+    logs: result.output,
+    errors: result.errors,
+    compilationTime,
+    compilerUsed: result.compilerUsed,
+    passesCompleted: result.passesCompleted,
+    bibtexRun: result.bibtexRun
+  };
 }
 
 export async function storeCompiledPdf(

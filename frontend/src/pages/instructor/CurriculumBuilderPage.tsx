@@ -21,9 +21,11 @@ interface InlineLectureFormProps {
   title: string;
   setTitle: (v: string) => void;
   type: string;
-  setType: (v: any) => void;
+  setType: (v: string) => void;
   videoUrl: string;
   setVideoUrl: (v: string) => void;
+  videoType: string;
+  setVideoType: (v: string) => void;
   fileUrl: string;
   setFileUrl: (v: string) => void;
   onSubmit: () => void;
@@ -33,7 +35,7 @@ interface InlineLectureFormProps {
 }
 
 function InlineLectureForm({ 
-  title, setTitle, type, setType, videoUrl, setVideoUrl, fileUrl, setFileUrl, 
+  title, setTitle, type, setType, videoUrl, setVideoUrl, videoType, setVideoType, fileUrl, setFileUrl, 
   onSubmit, onCancel, isSaving, isEdit 
 }: InlineLectureFormProps) {
   return (
@@ -65,13 +67,51 @@ function InlineLectureForm({
           
           <div className="mt-4 p-4 border border-primary/10 rounded-xl bg-background/40">
             <TabsContent value="video" className="mt-0 space-y-4">
-              <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Video Source</p>
-              <Input placeholder="YouTube or Vimeo URL" value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} className="h-10 text-sm" />
-              <div className="relative py-2">
-                <div className="absolute inset-0 flex items-center"><span className="w-full border-t border-primary/5" /></div>
-                <div className="relative flex justify-center text-[10px] uppercase font-black tracking-widest"><span className="bg-background/80 px-3 text-muted-foreground/60">Or direct upload</span></div>
+              <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Video Type</p>
+              <div className="grid grid-cols-2 gap-2">
+                <Button
+                  type="button"
+                  variant={videoType === "youtube" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setVideoType("youtube")}
+                  className="h-9 text-xs font-bold"
+                >
+                  YouTube Link
+                </Button>
+                <Button
+                  type="button"
+                  variant={videoType === "upload" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setVideoType("upload")}
+                  className="h-9 text-xs font-bold"
+                >
+                  Upload Video
+                </Button>
               </div>
-              <FileUpload value={videoUrl} onUploadSuccess={setVideoUrl} accept="video/mp4" maxSize={5 * 1024 * 1024 * 1024} />
+
+              {videoType === "youtube" && (
+                <div className="space-y-3">
+                  <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">YouTube URL</p>
+                  <Input 
+                    placeholder="https://www.youtube.com/watch?v=..." 
+                    value={videoUrl} 
+                    onChange={(e) => setVideoUrl(e.target.value)} 
+                    className="h-10 text-sm" 
+                  />
+                </div>
+              )}
+
+              {videoType === "upload" && (
+                <div className="space-y-3">
+                  <p className="text-[11px] font-bold text-muted-foreground uppercase tracking-wider">Upload Video File</p>
+                  <FileUpload 
+                    value={videoUrl} 
+                    onUploadSuccess={setVideoUrl} 
+                    accept="video/mp4,video/webm,video/avi" 
+                    maxSize={5 * 1024 * 1024 * 1024} 
+                  />
+                </div>
+              )}
             </TabsContent>
             
             <TabsContent value="file" className="mt-0 space-y-4">
@@ -255,6 +295,7 @@ export function CurriculumBuilderPage() {
   const [lectureTitle, setLectureTitle] = useState("");
   const [lectureType, setLectureType] = useState<Lecture["type"]>("video");
   const [lectureVideoUrl, setLectureVideoUrl] = useState("");
+  const [lectureVideoType, setLectureVideoType] = useState("youtube");
   const [lectureFileUrl, setLectureFileUrl] = useState("");
 
   const { data: course } = useQuery({
@@ -291,10 +332,10 @@ export function CurriculumBuilderPage() {
   });
 
   const addLecture = useMutation({
-    mutationFn: async ({ sectionId, title, type, videoUrl, content }: { sectionId: string; title: string, type: string, videoUrl?: string, content?: string }) => {
+    mutationFn: async ({ sectionId, title, type, videoUrl, videoType, content }: { sectionId: string; title: string; type: string; videoUrl?: string, videoType?: string, content?: string }) => {
       const res = await api<{ lecture: Lecture }>(`/sections/${sectionId}/lectures`, { 
         method: "POST", 
-        body: { title, type, videoUrl, content } 
+        body: { title, type, videoUrl, videoType, content } 
       });
       if (res.error) throw new Error(res.error);
       return res.data!;
@@ -307,10 +348,10 @@ export function CurriculumBuilderPage() {
   });
 
   const editLectureMut = useMutation({
-    mutationFn: async ({ id, title, type, videoUrl, content }: { id: string; title: string, type: string, videoUrl?: string, content?: string }) => {
+    mutationFn: async ({ id, title, type, videoUrl, videoType, content }: { id: string; title: string; type: string; videoUrl?: string, videoType?: string, content?: string }) => {
       const res = await api<{ lecture: Lecture }>(`/lectures/${id}`, { 
         method: "PATCH", 
-        body: { title, type, videoUrl, content } 
+        body: { title, type, videoUrl, videoType, content } 
       });
       if (res.error) throw new Error(res.error);
       return res.data!;
@@ -450,6 +491,7 @@ export function CurriculumBuilderPage() {
         title: lectureTitle.trim(),
         type: lectureType,
         videoUrl: lectureType === "video" ? lectureVideoUrl : undefined,
+        videoType: lectureType === "video" ? lectureVideoType : undefined,
         content: (lectureType === "file" || lectureType === "notes") ? lectureFileUrl : undefined,
       });
     } else if (activeDialogSection) {
@@ -458,6 +500,7 @@ export function CurriculumBuilderPage() {
         title: lectureTitle.trim(),
         type: lectureType,
         videoUrl: lectureType === "video" ? lectureVideoUrl : undefined,
+        videoType: lectureType === "video" ? lectureVideoType : undefined,
         content: (lectureType === "file" || lectureType === "notes") ? lectureFileUrl : undefined,
       });
     }
@@ -472,6 +515,8 @@ export function CurriculumBuilderPage() {
     setType: setLectureType,
     videoUrl: lectureVideoUrl,
     setVideoUrl: setLectureVideoUrl,
+    videoType: lectureVideoType,
+    setVideoType: setLectureVideoType,
     fileUrl: lectureFileUrl,
     setFileUrl: setLectureFileUrl,
     onSubmit: handleLectureSubmit,

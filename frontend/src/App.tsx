@@ -51,11 +51,28 @@ import { AdminAnalytics } from "@/pages/admin/AdminAnalytics";
 import { AdminSettings } from "@/pages/admin/AdminSettings";
 import { LandingPage } from "@/pages/public/LandingPage";
 import { CourseDetailPage } from "@/pages/public/CourseDetailPage";
+import { TestLandingPage } from "@/pages/public/TestLandingPage";
+import ResourcesPage from "@/pages/ResourcesPage";
+// import { InstructorEditor, StudentView, InstructorDashboard as ResourceInstructorDashboard } from "@/modules/learningIDE";
 
 function ProtectedRoute({ children, roles }: { children: React.ReactNode; roles: string[] }) {
-  const { user } = useUserStore();
+  const { user, isLoading } = useUserStore();
+  
+  // Show loading while checking authentication
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background text-foreground">
+        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+      </div>
+    );
+  }
+  
+  // Redirect to login if not authenticated
   if (!user) return <Navigate to="/login" replace />;
+  
+  // Check role permissions
   if (!roles.includes(user.role)) return <Navigate to="/" replace />;
+  
   return <>{children}</>;
 }
 
@@ -91,7 +108,6 @@ export default function App() {
     );
   }
 
-
   return (
     <ErrorBoundary>
       {/* Decorative blurry gradients background (Global) */}
@@ -106,6 +122,30 @@ export default function App() {
           <Route path="course/:courseId" element={<CourseDetailPage />} />
         </Route>
 
+        {/* Public standalone routes */}
+        <Route path="/resources" element={<ResourcesPage />} />
+        
+        {/* Learning Platform Routes - Temporarily disabled */}
+        {/* <Route path="/resources/course/:courseId" element={<StudentView />} /> */}
+        
+        {/* Learning Platform Instructor Routes - Temporarily disabled */}
+        {/* <Route 
+          path="/resources/instructor" 
+          element={
+            <ProtectedRoute roles={["instructor", "admin"]}>
+              <ResourceInstructorDashboard />
+            </ProtectedRoute>
+          } 
+        />
+        <Route 
+          path="/resources/instructor/:courseId/edit" 
+          element={
+            <ProtectedRoute roles={["instructor", "admin"]}>
+              <InstructorEditor />
+            </ProtectedRoute>
+          } 
+        /> */}
+
         {/* Auth routes without layout */}
         <Route path="/login" element={<PublicRoute><LoginPage /></PublicRoute>} />
         <Route path="/register" element={<PublicRoute><RegisterPage /></PublicRoute>} />
@@ -113,7 +153,7 @@ export default function App() {
         <Route path="/reset-password" element={<PublicRoute><ResetPasswordPage /></PublicRoute>} />
 
         {/* Student routes with DashboardLayout */}
-        <Route path="/student" element={<ProtectedRoute roles={["student"]}><DashboardLayout role="student" /></ProtectedRoute>}>
+        <Route path="/student" element={<ProtectedRoute roles={["student"]}><DashboardLayout role="student" /></ProtectedRoute>} >
           <Route index element={<StudentDashboard />} />
           <Route path="browse" element={<BrowseCourses />} />
           <Route path="my-courses" element={<MyCourses />} />
@@ -126,7 +166,7 @@ export default function App() {
         </Route>
 
         {/* Instructor routes with DashboardLayout */}
-        <Route path="/instructor" element={<ProtectedRoute roles={["instructor"]}><DashboardLayout role="instructor" /></ProtectedRoute>}>
+        <Route path="/instructor" element={<ProtectedRoute roles={["instructor"]}><DashboardLayout role="instructor" /></ProtectedRoute>} >
           <Route index element={<InstructorDashboard />} />
           <Route path="courses" element={<MyCoursesInstructor />} />
           <Route path="courses/new" element={<CreateCoursePage />} />
@@ -141,7 +181,7 @@ export default function App() {
         </Route>
 
         {/* Admin routes with DashboardLayout */}
-        <Route path="/admin" element={<ProtectedRoute roles={["admin"]}><DashboardLayout role="admin" /></ProtectedRoute>}>
+        <Route path="/admin" element={<ProtectedRoute roles={["admin"]}><DashboardLayout role="admin" /></ProtectedRoute>} >
           <Route index element={<AdminDashboard />} />
           <Route path="users" element={<AdminUsers />} />
           <Route path="courses" element={<AdminCourses />} />

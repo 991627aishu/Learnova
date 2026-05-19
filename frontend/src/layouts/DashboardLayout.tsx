@@ -34,7 +34,7 @@ interface DashboardLayoutProps {
 export function DashboardLayout({ role }: DashboardLayoutProps) {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, clearUser } = useUserStore();
+  const { user, logout } = useUserStore();
   const toast = useToastStore((s) => s.add);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [isDesktop, setIsDesktop] = useState(false);
@@ -52,7 +52,7 @@ export function DashboardLayout({ role }: DashboardLayoutProps) {
 
   const handleLogout = async () => {
     try {
-      clearUser();
+      logout();
       toast({ 
         title: "Logged out successfully", 
         variant: "success" 
@@ -84,7 +84,7 @@ export function DashboardLayout({ role }: DashboardLayoutProps) {
       case "student":
         return [
           { to: "/student", end: true, label: "Dashboard", icon: LayoutDashboard },
-          { to: "/student/courses", label: "My Courses", icon: BookOpen },
+          { to: "/student/my-courses", label: "My Courses", icon: BookOpen },
           { to: "/student/browse", label: "Browse", icon: Home },
           { to: "/student/wishlist", label: "Wishlist", icon: Heart },
           { to: "/student/certificates", label: "Certificates", icon: Award },
@@ -141,7 +141,7 @@ export function DashboardLayout({ role }: DashboardLayoutProps) {
               animate={{ x: 0 }}
               exit={{ x: -256 }}
               transition={{ duration: 0.3, ease: "easeInOut" }}
-              className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-border/50 bg-card shadow-sm"
+              className="fixed left-0 top-0 z-40 h-screen w-64 border-r border-amber-500/20 bg-card shadow-sm ring-1 ring-amber-500/10"
             >
               <div className="flex h-full flex-col p-4">
                 {/* Logo */}
@@ -174,12 +174,12 @@ export function DashboardLayout({ role }: DashboardLayoutProps) {
                 </nav>
                 
                 {/* User section */}
-                <div className="border-t border-border/50 pt-4">
+                <div className="border-t border-amber-500/20 pt-4">
                   <div className="mb-2 flex items-center gap-3 rounded-lg px-3 py-2">
                     <UnifiedAvatar 
                       user={user}
                       size="md"
-                      className="border border-border/50"
+                      className="border border-amber-500/30"
                     />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-sm font-medium text-foreground">
@@ -211,7 +211,7 @@ export function DashboardLayout({ role }: DashboardLayoutProps) {
       {/* Main content */}
       <main className={`flex flex-col flex-1 min-h-screen transition-all duration-300 ${isSidebarOpen && isDesktop ? 'pl-64' : 'pl-0'}`}>
         {/* Top bar for desktop */}
-        <div className="hidden lg:flex items-center justify-between h-16 px-6 border-b border-border/40">
+        <div className="hidden lg:flex items-center justify-between h-16 px-6 border-b border-amber-500/20 ring-1 ring-amber-500/10">
           <Button
             variant="ghost"
             size="sm"
@@ -228,7 +228,7 @@ export function DashboardLayout({ role }: DashboardLayoutProps) {
               <UnifiedAvatar 
                 user={user}
                 size="sm"
-                className="border border-border/50"
+                className="border border-amber-500/30"
               />
               <span className="text-sm font-medium text-foreground">
                 {user?.firstName} {user?.lastName}

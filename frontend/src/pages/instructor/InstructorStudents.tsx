@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Users, GraduationCap, Calendar, Search } from "lucide-react";
+import { Users, GraduationCap, Calendar, Search, Star, BookOpen, Users as UsersIcon } from "lucide-react";
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
@@ -18,6 +18,11 @@ interface Student {
 
 interface CourseGroup {
   courseTitle: string;
+  courseId?: string;
+  courseThumbnail?: string | null;
+  courseStatus?: string;
+  courseRating?: number;
+  courseReviewCount?: number;
   students: Student[];
 }
 
@@ -93,17 +98,78 @@ export function InstructorStudents() {
       ) : (
         <div className="grid gap-8">
           {filteredGroups.map((group, groupIdx) => (
-            <div key={groupIdx} className="space-y-4">
-              <div className="flex items-center gap-3 px-1">
-                <GraduationCap className="w-5 h-5 text-primary" />
-                <h2 className="text-xl font-bold text-foreground tracking-tight">
-                  {group.courseTitle}
-                  <span className="ml-3 text-sm font-medium text-muted-foreground bg-muted/50 px-2 py-0.5 rounded-full">
-                    {group.students.length} {group.students.length === 1 ? 'Student' : 'Students'}
-                  </span>
-                </h2>
-              </div>
-              
+            <div key={groupIdx} className="space-y-6">
+              {/* Course Card Header */}
+              <Card className="border-border/40 shadow-md overflow-hidden bg-card/50 backdrop-blur-sm">
+                <div className="flex flex-col md:flex-row">
+                  {/* Course Thumbnail */}
+                  <div className="h-32 md:h-auto md:w-48 bg-gray-100 flex items-center justify-center relative overflow-hidden">
+                    <img
+                      src={group.courseThumbnail || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=60"}
+                      alt={group.courseTitle}
+                      className="max-h-full max-w-full object-contain"
+                      onError={(e) => {
+                        (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=60";
+                      }}
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                    
+                    {/* Status Badge */}
+                    <div className="absolute top-3 right-3">
+                      <span className={cn(
+                        "inline-flex items-center px-2.5 py-1 rounded-full text-xs font-bold border backdrop-blur-sm",
+                        group.courseStatus === "published" 
+                          ? "bg-green-500/20 text-green-400 border-green-500/30" 
+                          : "bg-amber-500/20 text-amber-400 border-amber-500/30"
+                      )}>
+                        {group.courseStatus === "published" ? "Published" : "Draft"}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Course Info */}
+                  <div className="flex-1 p-6">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-3">
+                          <GraduationCap className="w-6 h-6 text-primary" />
+                          <h2 className="text-2xl font-bold text-foreground tracking-tight">
+                            {group.courseTitle}
+                          </h2>
+                        </div>
+                        
+                        {/* Stats */}
+                        <div className="flex items-center gap-6 text-muted-foreground">
+                          <div className="flex items-center gap-2">
+                            <UsersIcon className="w-4 h-4" />
+                            <span className="text-sm font-medium">
+                              {group.students.length} {group.students.length === 1 ? 'Student' : 'Students'}
+                            </span>
+                          </div>
+                          
+                          {group.courseReviewCount && group.courseReviewCount > 0 && (
+                            <div className="flex items-center gap-2">
+                              <Star className="w-4 h-4 text-amber-500" />
+                              <span className="text-sm font-medium text-amber-400">
+                                {group.courseRating?.toFixed(1)} ({group.courseReviewCount})
+                              </span>
+                            </div>
+                          )}
+                          
+                          <div className="flex items-center gap-2">
+                            <BookOpen className="w-4 h-4" />
+                            <span className="text-sm font-medium capitalize">
+                              {group.courseStatus}
+                            </span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+
+              {/* Students Table */}
               <Card className="border-border/40 shadow-sm overflow-hidden bg-card/50 backdrop-blur-sm">
                 <CardContent className="p-0">
                   <div className="overflow-x-auto">

@@ -1,4 +1,4 @@
-import { Outlet, Link, useNavigate } from "react-router-dom";
+import { Outlet, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { useState } from "react";
 import { Menu, X, LogOut } from "lucide-react";
@@ -12,7 +12,7 @@ import { Logo } from "@/components/common/Logo";
 
 export function PublicLayout() {
   const navigate = useNavigate();
-  const { user, clearUser } = useUserStore();
+  const { user, logout } = useUserStore();
   const toast = useToastStore((s) => s.add);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -22,11 +22,8 @@ export function PublicLayout() {
 
   const handleLogout = async () => {
     try {
-      // Clear token from localStorage
-      localStorage.removeItem("lms_token");
-      
-      // Clear user from store
-      clearUser();
+      // Use the userStore logout method which handles token clearing and user state
+      logout();
       
       toast({ 
         title: "Logged out successfully", 
@@ -48,7 +45,7 @@ export function PublicLayout() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       {/* Top Navigation */}
-      <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+      <header className="sticky top-0 z-50 w-full border-b border-amber-500/20 bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 ring-1 ring-amber-500/10">
         <div className="container mx-auto px-4">
           <div className="flex h-16 items-center justify-between">
             {/* Logo */}
@@ -57,7 +54,7 @@ export function PublicLayout() {
                 onClick={handleLogoClick}
                 className="flex items-center gap-3 group cursor-pointer hover:opacity-80 transition-opacity"
               >
-                <Logo className="w-8 h-8" />
+                <Logo className="w-10 h-10" />
               </button>
             </div>
 
@@ -91,11 +88,12 @@ export function PublicLayout() {
                   <Button variant="ghost" onClick={() => navigate("/login")}>
                     Login
                   </Button>
-                  <Button onClick={() => navigate("/register")}>
+                  <Button onClick={() => navigate("/register")} className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600">
                     Sign up
                   </Button>
                 </div>
               )}
+              <ThemeToggle />
             </nav>
 
             {/* Mobile menu button */}
@@ -124,9 +122,9 @@ export function PublicLayout() {
               className="md:hidden border-t border-border/40 bg-background"
             >
               <div className="container mx-auto px-4 py-4 space-y-4">
-                {user ? (
-                  <>
-                    <div className="flex items-center gap-3 pb-4 border-b border-border/20">
+                <div className="flex items-center justify-between pb-4 border-b border-border/20">
+                  {user ? (
+                    <div className="flex items-center gap-3">
                       <UnifiedAvatar 
                         user={user}
                         size="md"
@@ -139,6 +137,15 @@ export function PublicLayout() {
                         <p className="text-sm text-muted-foreground capitalize">{user?.role}</p>
                       </div>
                     </div>
+                  ) : (
+                    <div className="text-sm text-muted-foreground">
+                      Guest User
+                    </div>
+                  )}
+                  <ThemeToggle />
+                </div>
+                {user ? (
+                  <>
                     <Button 
                       variant="ghost" 
                       onClick={() => {
@@ -178,7 +185,7 @@ export function PublicLayout() {
                         navigate("/register");
                         setIsMobileMenuOpen(false);
                       }}
-                      className="w-full"
+                      className="w-full bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600"
                     >
                       Sign up
                     </Button>

@@ -67,7 +67,7 @@ export async function getInstructorReviews(req: AuthRequest, res: Response) {
     },
     include: { 
       user: { select: { id: true, firstName: true, lastName: true, avatar: true, profileImage: true } },
-      course: { select: { id: true, title: true, averageRating: true, reviewCount: true } }
+      course: { select: { id: true, title: true, thumbnail: true, status: true, averageRating: true, reviewCount: true } }
     },
     orderBy: { createdAt: "desc" },
   });

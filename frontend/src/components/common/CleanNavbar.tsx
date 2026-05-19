@@ -39,7 +39,7 @@ export function CleanNavbar({ showDashboardButton = true }: CleanNavbarProps) {
         <Button 
           variant="ghost" 
           onClick={handleDashboard}
-          className="font-medium"
+          className="font-medium hover:bg-amber-500/10 hover:text-amber-500 transition-colors"
         >
           Dashboard
         </Button>
@@ -47,20 +47,20 @@ export function CleanNavbar({ showDashboardButton = true }: CleanNavbarProps) {
       
       {user ? (
         <div className="flex items-center gap-3">
-          <CleanProfileAvatar user={user} size="sm" className="border border-border/50" />
+          <CleanProfileAvatar user={user} size="sm" className="border border-amber-500/30 ring-1 ring-amber-500/20" />
           <span className="text-sm font-medium text-foreground">
             {user.firstName} {user.lastName}
           </span>
-          <Button variant="ghost" size="sm" onClick={handleLogout}>
+          <Button variant="ghost" size="sm" onClick={handleLogout} className="hover:bg-amber-500/10 hover:text-amber-500 transition-colors">
             <LogOut className="h-4 w-4" />
           </Button>
         </div>
       ) : (
         <div className="flex items-center gap-4">
-          <Button variant="ghost" onClick={() => navigate("/login")}>
+          <Button variant="ghost" onClick={() => navigate("/login")} className="hover:bg-amber-500/10 hover:text-amber-500 transition-colors">
             Login
           </Button>
-          <Button onClick={() => navigate("/register")}>
+          <Button onClick={() => navigate("/register")} className="bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600 border border-amber-400/30 shadow-lg shadow-amber-500/20">
             Sign up
           </Button>
         </div>

@@ -1,4 +1,5 @@
 import { Response } from "express";
+import { z } from "zod";
 import { prisma } from "../utils/prisma.js";
 import { AuthRequest } from "../middlewares/auth.js";
 import { AppError } from "../middlewares/errorHandler.js";
@@ -67,6 +68,7 @@ export async function myEnrollments(req: AuthRequest, res: Response) {
 export async function getProgress(req: AuthRequest, res: Response) {
   if (!req.user) throw new AppError(401, "Unauthorized");
   const courseId = req.params.courseId;
+  console.log("Enrollment progress request received:", courseId, "User:", req.user.id);
   const enrollment = await prisma.enrollment.findUnique({
     where: { userId_courseId: { userId: req.user.id, courseId } },
     include: {
@@ -157,7 +159,16 @@ export async function getInstructorStudents(req: AuthRequest, res: Response) {
     where: { course: { instructorId: req.user.id } },
     include: {
       user: { select: { id: true, firstName: true, lastName: true, email: true, avatar: true } },
-      course: { select: { id: true, title: true } },
+      course: { 
+        select: { 
+          id: true, 
+          title: true, 
+          thumbnail: true, 
+          status: true,
+          averageRating: true,
+          reviewCount: true
+        } 
+      },
       progress: true
     },
     orderBy: { enrolledAt: "desc" }
@@ -171,6 +182,11 @@ export async function getInstructorStudents(req: AuthRequest, res: Response) {
     if (!groupedData[courseId]) {
       groupedData[courseId] = {
         courseTitle: en.course.title,
+        courseId: en.course.id,
+        courseThumbnail: en.course.thumbnail,
+        courseStatus: en.course.status,
+        courseRating: en.course.averageRating,
+        courseReviewCount: en.course.reviewCount,
         students: []
       };
     }

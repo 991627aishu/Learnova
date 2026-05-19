@@ -29,3 +29,32 @@ uploadRouter.post("/", authenticate, upload.single("file"), (req, res) => {
     res.status(500).json({ success: false, error: error.message });
   }
 });
+
+uploadRouter.post("/image", authenticate, upload.single("file"), (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, error: "No image file uploaded" });
+    }
+    
+    // Check if it's an image
+    if (!req.file.mimetype.startsWith('image/')) {
+      return res.status(400).json({ success: false, error: "File must be an image" });
+    }
+    
+    console.log("Image uploaded successfully:", {
+      filename: req.file.filename,
+      originalname: req.file.originalname,
+      mimetype: req.file.mimetype,
+      size: req.file.size
+    });
+    
+    const baseUrl = process.env.API_URL || `http://localhost:${process.env.PORT || 3001}`;
+    const imageUrl = `${baseUrl}/uploads/${req.file.filename}`;
+    
+    console.log("Generated image URL:", imageUrl);
+    res.json({ success: true, imageUrl });
+  } catch (error: any) {
+    console.error("Image upload error:", error);
+    res.status(500).json({ success: false, error: error.message });
+  }
+});

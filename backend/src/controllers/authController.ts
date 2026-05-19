@@ -1,8 +1,11 @@
 import { Response } from "express";
 import { z } from "zod";
+import { PrismaClient } from "@prisma/client";
 import * as authService from "../services/authService.js";
 import { AuthRequest } from "../middlewares/auth.js";
 import { AppError } from "../middlewares/errorHandler.js";
+
+const prisma = new PrismaClient();
 
 const registerSchema = z.object({
   email: z.string().email(),
@@ -18,12 +21,15 @@ const loginSchema = z.object({
 });
 
 export async function register(req: AuthRequest, res: Response) {
+  console.log("REGISTER BODY:", req.body);
   const data = registerSchema.parse(req.body);
   const result = await authService.register(data);
   res.status(201).json({ success: true, ...result });
 }
 
 export async function login(req: AuthRequest, res: Response) {
+  console.log("LOGIN BODY:", req.body);
+  console.log(await prisma.user.findMany());
   try {
     const { email, password } = loginSchema.parse(req.body);
     
@@ -53,6 +59,9 @@ export async function me(req: AuthRequest, res: Response) {
 }
 
 export async function forgotPassword(req: AuthRequest, res: Response) {
+  console.log("🚨 FORGOT PASSWORD API HIT");
+  console.log("EMAIL RECEIVED:", req.body.email);
+  
   const { email } = z.object({ email: z.string().email() }).parse(req.body);
   const result = await authService.forgotPassword(email);
   res.json({ success: true, ...result });

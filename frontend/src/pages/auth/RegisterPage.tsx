@@ -69,21 +69,21 @@ export function RegisterPage() {
     <div className="min-h-screen flex flex-col bg-background selection:bg-primary/20">
       {/* Decorative blurry gradients background */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none -z-10">
-        <div className="absolute top-[20%] -right-[10%] w-[50%] h-[50%] bg-primary/20 rounded-full blur-[120px]" />
-        <div className="absolute top-[80%] -left-[10%] w-[40%] h-[40%] bg-blue-500/10 rounded-full blur-[120px]" />
+        <div className="absolute top-[20%] -right-[10%] w-[50%] h-[50%] bg-amber-500/20 rounded-full blur-[120px]" />
+        <div className="absolute top-[80%] -left-[10%] w-[40%] h-[40%] bg-yellow-600/10 rounded-full blur-[120px]" />
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center p-4">
         <div className="mb-8 w-full max-w-lg flex justify-center">
           <Link to="/" className="flex items-center hover:opacity-90 transition-opacity">
-            <Logo className="w-10 h-10" />
+            <Logo className="w-12 h-12" />
           </Link>
         </div>
         
         <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }} className="w-full max-w-lg">
-          <Card className="border border-border/50 shadow-2xl bg-card/60 backdrop-blur-xl">
+          <Card className="border border-amber-500/20 shadow-2xl bg-card/60 backdrop-blur-xl ring-1 ring-amber-500/10">
             <CardHeader className="space-y-1 text-center pb-6">
-              <CardTitle className="text-3xl font-bold font-display">Create account</CardTitle>
+              <CardTitle className="text-3xl font-bold font-display bg-gradient-to-r from-amber-400 via-yellow-500 to-amber-600 bg-clip-text text-transparent">Create account</CardTitle>
               <CardDescription className="text-base text-muted-foreground">Join the world-class learning platform</CardDescription>
             </CardHeader>
             <CardContent>
@@ -157,7 +157,7 @@ export function RegisterPage() {
                     </SelectContent>
                   </Select>
                 </div>
-                <Button type="submit" className="w-full h-12 text-lg rounded-xl font-semibold shadow-lg hover:shadow-primary/30 transition-all hover:-translate-y-0.5" disabled={loading}>
+                <Button type="submit" className="w-full h-12 text-lg rounded-xl font-semibold shadow-lg hover:shadow-amber-500/30 transition-all hover:-translate-y-0.5 bg-gradient-to-r from-amber-500 to-yellow-500 hover:from-amber-600 hover:to-yellow-600" disabled={loading}>
                   {loading ? "Creating account..." : "Create account"}
                 </Button>
               </form>

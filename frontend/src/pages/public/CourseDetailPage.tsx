@@ -11,6 +11,9 @@ import { useToastStore } from "@/store/toastStore";
 import ReactMarkdown from 'react-markdown';
 import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { AuthModal } from "@/components/auth/AuthModal";
+import { Lock, AlertCircle } from "lucide-react";
+import { NotesPreview } from "@/components/course/NotesPreview";
 
 declare global {
   interface Window {
@@ -26,6 +29,47 @@ export function CourseDetailPage() {
   const toast = useToastStore((s) => s.add);
   const [isProcessingPayment, setIsProcessingPayment] = useState(false);
   const [isDownloadingCertificate, setIsDownloadingCertificate] = useState(false);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [pdfUrl, setPdfUrl] = useState<string | null>(null);
+  const [isPdfLoading, setIsPdfLoading] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
+
+  const handleLockedContentClick = () => {
+    setShowAuthModal(true);
+  };
+
+  // Fetch PDF for notes when lecture is selected
+  const fetchPdfForLecture = async (lecture: any) => {
+    if (lecture?.type === "notes" && lecture?.content) {
+      setIsPdfLoading(true);
+      setPdfError(null);
+      
+      try {
+        const res = await fetch(`/api/latex/compile`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            latex: lecture.content,
+            format: "pdf"
+          })
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error || errData.logs || "Failed to load PDF notes");
+        }
+
+        const data = await res.json();
+        setPdfUrl(data.pdfUrl);
+      } catch (err: any) {
+        setPdfError(err.message || "Failed to load PDF");
+      } finally {
+        setIsPdfLoading(false);
+      }
+    }
+  };
 
   useEffect(() => {
     const script = document.createElement("script");
@@ -37,15 +81,23 @@ export function CourseDetailPage() {
     };
   }, []);
 
-  const { data: courseData, isLoading, refetch } = useQuery({
+  const { data: courseResponse, isLoading, refetch } = useQuery({
     queryKey: ["course", courseId],
     queryFn: async () => {
-      const res = await api<any>(`/courses/${courseId}`);
+      const endpoint = user ? `/courses/${courseId}/learn` : `/courses/${courseId}`;
+      const res = await api<any>(endpoint);
       if (res.error) throw new Error(res.error);
-      return res.data.course;
+      return res.data;
     },
     enabled: !!courseId,
   });
+
+  // 🚨 FULL API RESPONSE DEBUG
+  console.log("FULL API RESPONSE:", courseResponse);
+
+  // Split data correctly
+  const courseData = courseResponse?.course;
+  const lecturesFromAPI = courseResponse?.lectures || [];
 
   const { data: aiDetails } = useQuery({
     queryKey: ["course-ai-details", courseId],
@@ -148,7 +200,7 @@ export function CourseDetailPage() {
           key: RAZORPAY_KEY_ID,
           amount: amount,
           currency: currency,
-          name: "Learnova",
+          name: "THE GATE HUB",
           description: courseData.title,
           order_id: orderId,
           handler: async function (response: any) {
@@ -230,77 +282,117 @@ export function CourseDetailPage() {
   return (
     <div className="min-h-screen bg-background pb-20">
       {/* Hero Section */}
-      <div className="bg-slate-900 text-white py-16 px-4">
-        <div className="max-w-6xl mx-auto flex flex-col lg:flex-row gap-12 items-center">
-          <div className="flex-1 space-y-6">
-            <Button 
-              variant="ghost" 
-              className="text-white/70 hover:text-white p-0 flex items-center gap-2 mb-4"
-              onClick={() => navigate(-1)}
-            >
-              <ArrowLeft className="w-4 h-4" /> Back
-            </Button>
-            <Badge variant="secondary" className="bg-primary/20 text-primary border-none uppercase tracking-widest text-[10px] font-bold py-1 px-3">
-              {courseData.category?.name || "Premium Course"}
-            </Badge>
-            <h1 className="text-4xl lg:text-5xl font-black tracking-tight leading-tight">
-              {courseData.title}
-            </h1>
-            <p className="text-xl text-slate-300 font-light max-w-2xl leading-relaxed">
-              {courseData.subtitle}
-            </p>
-            <div className="flex flex-wrap gap-6 text-sm font-medium text-slate-400">
-              <div className="flex items-center gap-2">
-                <Star className="w-4 h-4 text-yellow-500 fill-current" />
-                <span className="text-white">{courseData.averageRating?.toFixed(1) || "4.8"}</span> ({courseData.reviewCount || 0} reviews)
+      <div className="relative bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 text-white overflow-hidden">
+                
+        <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-16 lg:py-24">
+          <div className="flex flex-col lg:flex-row gap-12 lg:gap-16 items-center">
+            <div className="flex-1 space-y-8">
+              {/* Back Button */}
+              <Button 
+                variant="ghost" 
+                className="text-white/60 hover:text-white hover:bg-white/10 p-0 flex items-center gap-2 mb-2 transition-all duration-200"
+                onClick={() => navigate(-1)}
+              >
+                <ArrowLeft className="w-4 h-4" /> Back to Courses
+              </Button>
+              
+              {/* Category Badge */}
+              <div className="flex items-center gap-3">
+                <Badge variant="secondary" className="bg-primary/20 text-primary border-none uppercase tracking-widest text-[11px] font-bold py-2 px-4 rounded-full">
+                  {courseData.category?.name || "Premium Course"}
+                </Badge>
+                {courseData.level && (
+                  <Badge variant="outline" className="border-white/20 text-white/80 text-[11px] font-medium py-2 px-4 rounded-full">
+                    {courseData.level}
+                  </Badge>
+                )}
               </div>
-              <div className="flex items-center gap-2">
-                <User className="w-4 h-4" />
-                <span>By {courseData.instructor?.firstName} {courseData.instructor?.lastName}</span>
+              
+              {/* Course Title */}
+              <div className="space-y-4">
+                <h1 className="text-4xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-tight bg-gradient-to-r from-white to-white/90 bg-clip-text text-transparent">
+                  {courseData.title}
+                </h1>
+                <p className="text-xl sm:text-2xl text-slate-300 font-light max-w-3xl leading-relaxed">
+                  {courseData.subtitle}
+                </p>
               </div>
-              <div className="flex items-center gap-2">
-                <Globe className="w-4 h-4" />
-                <span>English</span>
+              
+              {/* Course Meta Information */}
+              <div className="flex flex-wrap gap-6 text-sm font-medium text-slate-400">
+                <div className="flex items-center gap-2 bg-white/5 px-3 py-2 rounded-lg">
+                  <Star className="w-4 h-4 text-yellow-500 fill-current" />
+                  <span className="text-white">{courseData.averageRating?.toFixed(1) || "4.8"}</span>
+                  <span className="text-slate-400">({courseData.reviewCount || 0} reviews)</span>
+                </div>
+                <div className="flex items-center gap-2 bg-white/5 px-3 py-2 rounded-lg">
+                  <User className="w-4 h-4" />
+                  <span>By {courseData.instructor?.firstName} {courseData.instructor?.lastName}</span>
+                </div>
+                <div className="flex items-center gap-2 bg-white/5 px-3 py-2 rounded-lg">
+                  <Globe className="w-4 h-4" />
+                  <span>English</span>
+                </div>
+                <div className="flex items-center gap-2 bg-white/5 px-3 py-2 rounded-lg">
+                  <ListChecks className="w-4 h-4" />
+                  <span>{courseData.sections?.length || 0} sections</span>
+                </div>
               </div>
             </div>
-          </div>
           
-          <Card className="w-full lg:w-96 shrink-0 overflow-hidden border-none shadow-2xl shadow-primary/20 bg-slate-800 lg:-mb-32 z-10">
-            <div className="aspect-video relative group bg-slate-950 flex items-center justify-center overflow-hidden">
+          <Card className="w-full lg:w-[420px] shrink-0 overflow-hidden border-none shadow-2xl shadow-primary/30 bg-slate-800/95 backdrop-blur-sm lg:-mb-32 z-10 ring-1 ring-white/10">
+            <div className="aspect-video relative group bg-gray-100 flex items-center justify-center overflow-hidden">
               <img 
                 src={courseData.thumbnail || "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=60"} 
-                className="max-h-full max-w-full object-contain transition-transform duration-700 group-hover:scale-110"
+                className="max-h-full max-w-full object-contain transition-transform duration-700 group-hover:scale-105"
                 alt={courseData.title}
                 onError={(e) => {
                   (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=800&auto=format&fit=crop&q=60";
                 }}
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent opacity-60 group-hover:opacity-40 transition-opacity" />
-              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all transform scale-90 group-hover:scale-100">
-                <div className="w-20 h-20 bg-primary/90 backdrop-blur-sm rounded-full flex items-center justify-center shadow-2xl">
-                  <PlayCircle className="w-10 h-10 text-white fill-current" />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/30 to-transparent opacity-80 group-hover:opacity-60 transition-all duration-300" />
+              <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all duration-300 transform scale-95 group-hover:scale-100">
+                <div className="w-16 h-16 bg-primary/95 backdrop-blur-sm rounded-full flex items-center justify-center shadow-2xl border border-white/20">
+                  <PlayCircle className="w-8 h-8 text-white fill-current" />
                 </div>
               </div>
             </div>
             <CardContent className="p-8 space-y-6">
-              <div className="flex items-baseline justify-between">
-                <div className="flex items-baseline gap-2">
-                  <span className="text-4xl font-black text-white">${courseData.price}</span>
-                  {courseData.price > 0 && <span className="text-slate-400 line-through text-lg font-light">$99.99</span>}
+              {/* Pricing Section */}
+              <div className="space-y-4">
+                <div className="flex items-baseline justify-between">
+                  <div className="flex items-baseline gap-3">
+                    <span className="text-5xl font-black text-white">${courseData.price}</span>
+                    {courseData.price > 0 && (
+                      <span className="text-slate-400 line-through text-lg font-light">$99.99</span>
+                    )}
+                  </div>
+                  {courseData.price > 0 && (
+                    <Badge className="bg-gradient-to-r from-green-500/20 to-emerald-500/20 text-green-400 border-green-500/30 font-bold px-3 py-1">
+                      80% OFF
+                    </Badge>
+                  )}
                 </div>
-                {courseData.price > 0 && <Badge className="bg-green-500/20 text-green-400 border-none font-bold">80% OFF</Badge>}
+                
+                <div className="flex items-center gap-2 text-sm text-slate-400">
+                  <Users className="w-4 h-4" />
+                  <span>{courseData.enrollmentCount || 1234} students enrolled</span>
+                </div>
               </div>
               
+              {/* Enroll Button */}
               <Button 
                 className={cn(
-                  "w-full h-14 text-lg font-bold rounded-xl shadow-lg transition-all active:scale-95",
-                  isEnrolled ? "bg-secondary hover:bg-secondary/80 text-secondary-foreground" : "bg-primary hover:bg-primary/90 shadow-primary/20"
+                  "w-full h-16 text-lg font-bold rounded-2xl shadow-xl transition-all duration-200 active:scale-95 border-2",
+                  isEnrolled 
+                    ? "bg-gradient-to-r from-secondary to-secondary/80 hover:from-secondary/90 hover:to-secondary/70 text-secondary-foreground border-secondary/50" 
+                    : "bg-gradient-to-r from-primary to-primary/90 hover:from-primary/95 hover:to-primary/85 shadow-primary/30 border-primary/50"
                 )}
                 onClick={handleEnroll}
                 disabled={isProcessingPayment}
               >
                 {isProcessingPayment ? (
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3">
                     <Loader2 className="w-5 h-5 animate-spin" />
                     Processing...
                   </div>
@@ -311,18 +403,19 @@ export function CourseDetailPage() {
                 )}
               </Button>
 
+              {/* Progress Section */}
               {isEnrolled && enrollmentStatus?.progress && (
-                <div className="space-y-3">
-                  <div className="flex justify-between text-sm font-bold">
-                    <span className="text-muted-foreground uppercase tracking-wider text-[10px]">Your Progress</span>
-                    <span className="text-primary">{enrollmentStatus.progress.percent}%</span>
+                <div className="space-y-4 p-4 bg-slate-900/50 rounded-xl border border-slate-700">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm font-bold text-slate-300 uppercase tracking-wider">Your Progress</span>
+                    <span className="text-lg font-bold text-primary">{enrollmentStatus.progress.percent}%</span>
                   </div>
-                  <Progress value={enrollmentStatus.progress.percent} className="h-2 bg-slate-700" />
+                  <Progress value={enrollmentStatus.progress.percent} className="h-3 bg-slate-700" />
                   
                   {enrollmentStatus.progress.percent === 100 && (
                     <Button 
                       variant="outline" 
-                      className="w-full mt-2 border-primary/50 text-primary hover:bg-primary/10 gap-2 font-bold"
+                      className="w-full mt-3 border-amber-500/50 text-amber-500 hover:bg-amber-500/10 gap-2 font-bold"
                       onClick={handleDownloadCertificate}
                       disabled={isDownloadingCertificate}
                     >
@@ -337,17 +430,39 @@ export function CourseDetailPage() {
                 </div>
               )}
               
-              <div className="space-y-4 pt-4 border-t border-white/5">
-                <p className="text-sm font-bold text-white uppercase tracking-widest opacity-50">This course includes:</p>
-                <div className="grid gap-3 text-sm text-slate-300">
-                  <div className="flex items-center gap-3"><PlayCircle className="w-4 h-4 text-primary" /> 24.5 hours on-demand video</div>
-                  <div className="flex items-center gap-3"><FileText className="w-4 h-4 text-primary" /> 12 downloadable resources</div>
-                  <div className="flex items-center gap-3"><CheckCircle className="w-4 h-4 text-primary" /> Full lifetime access</div>
-                  <div className="flex items-center gap-3"><ShieldCheck className="w-4 h-4 text-primary" /> Certificate of completion</div>
+              {/* Course Features */}
+              <div className="space-y-4 pt-6 border-t border-white/10">
+                <p className="text-sm font-bold text-white uppercase tracking-wider opacity-70">This course includes:</p>
+                <div className="grid gap-4 text-sm text-slate-300">
+                  <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 transition-colors">
+                    <div className="w-8 h-8 bg-primary/20 rounded-lg flex items-center justify-center">
+                      <PlayCircle className="w-4 h-4 text-primary" />
+                    </div>
+                    <span className="font-medium">{courseData.duration || "24.5"} hours on-demand video</span>
+                  </div>
+                  <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 transition-colors">
+                    <div className="w-8 h-8 bg-primary/20 rounded-lg flex items-center justify-center">
+                      <FileText className="w-4 h-4 text-primary" />
+                    </div>
+                    <span className="font-medium">{courseData.resources || "12"} downloadable resources</span>
+                  </div>
+                  <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 transition-colors">
+                    <div className="w-8 h-8 bg-primary/20 rounded-lg flex items-center justify-center">
+                      <CheckCircle className="w-4 h-4 text-primary" />
+                    </div>
+                    <span className="font-medium">Full lifetime access</span>
+                  </div>
+                  <div className="flex items-center gap-3 p-2 rounded-lg hover:bg-white/5 transition-colors">
+                    <div className="w-8 h-8 bg-primary/20 rounded-lg flex items-center justify-center">
+                      <ShieldCheck className="w-4 h-4 text-primary" />
+                    </div>
+                    <span className="font-medium">Certificate of completion</span>
+                  </div>
                 </div>
               </div>
             </CardContent>
           </Card>
+        </div>
         </div>
       </div>
 
@@ -355,28 +470,35 @@ export function CourseDetailPage() {
       <div className="max-w-6xl mx-auto px-4 mt-12 lg:mt-40 flex flex-col lg:flex-row gap-16">
         <div className="flex-1 space-y-12">
           {aiContent?.whatYouWillLearn && (
-            <section className="space-y-6 bg-card border border-border/40 p-8 rounded-2xl">
-              <h2 className="text-2xl font-black tracking-tight flex items-center gap-3">
-                <Target className="w-6 h-6 text-primary" />
-                What You Will Learn
-              </h2>
-              <div className="grid sm:grid-cols-2 gap-4">
+            <section className="space-y-8 bg-gradient-to-br from-card via-card to-card/50 border border-border/40 p-8 lg:p-10 rounded-3xl shadow-lg hover:shadow-xl transition-all duration-300">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-gradient-to-br from-primary/20 to-primary/10 rounded-xl flex items-center justify-center">
+                  <Target className="w-6 h-6 text-primary" />
+                </div>
+                <h2 className="text-3xl font-black tracking-tight">What You Will Learn</h2>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-6">
                 {aiContent.whatYouWillLearn.map((outcome: string, idx: number) => (
-                  <div key={idx} className="flex gap-3 text-sm text-muted-foreground leading-snug">
-                    <CheckCircle className="w-5 h-5 text-green-500 shrink-0 mt-0.5" />
-                    <span>{outcome}</span>
+                  <div 
+                    key={idx} 
+                    className="flex gap-4 text-muted-foreground leading-relaxed p-4 rounded-xl hover:bg-muted/20 transition-all duration-200 group"
+                  >
+                    <div className="w-6 h-6 bg-green-500/20 rounded-full flex items-center justify-center shrink-0 mt-1 group-hover:bg-green-500/30 transition-colors">
+                      <CheckCircle className="w-4 h-4 text-green-500" />
+                    </div>
+                    <span className="text-sm font-medium">{outcome}</span>
                   </div>
                 ))}
               </div>
             </section>
           )}
 
-          <section className="space-y-4">
-            <h2 className="text-2xl font-black tracking-tight flex items-center gap-3">
-              <div className="w-1 h-8 bg-primary rounded-full" />
-              Course Description
-            </h2>
-            <div className="prose prose-slate dark:prose-invert max-w-none text-muted-foreground font-light leading-relaxed">
+          <section className="space-y-8">
+            <div className="flex items-center gap-4">
+              <div className="w-1 h-12 bg-gradient-to-b from-primary to-primary/50 rounded-full" />
+              <h2 className="text-3xl font-black tracking-tight">Course Description</h2>
+            </div>
+            <div className="prose prose-slate dark:prose-invert max-w-none text-muted-foreground leading-relaxed text-lg bg-card/30 p-8 rounded-2xl border border-border/20">
               {aiContent?.description ? (
                 <ReactMarkdown>{aiContent.description}</ReactMarkdown>
               ) : (
@@ -386,53 +508,132 @@ export function CourseDetailPage() {
           </section>
 
           {aiContent?.skills && (
-            <section className="space-y-4">
-              <h2 className="text-2xl font-black tracking-tight flex items-center gap-3">
-                <Zap className="w-6 h-6 text-primary" />
-                Skills You Will Gain
-              </h2>
-              <div className="flex flex-wrap gap-2">
+            <section className="space-y-8">
+              <div className="flex items-center gap-4">
+                <div className="w-12 h-12 bg-gradient-to-br from-amber-500/20 to-orange-500/10 rounded-xl flex items-center justify-center">
+                  <Zap className="w-6 h-6 text-amber-500" />
+                </div>
+                <h2 className="text-3xl font-black tracking-tight">Skills You Will Gain</h2>
+              </div>
+              <div className="flex flex-wrap gap-3">
                 {aiContent.skills.map((skill: string, idx: number) => (
-                  <Badge key={idx} variant="secondary" className="px-4 py-2 rounded-lg text-sm bg-secondary/50 border-none">
-                    {skill}
-                  </Badge>
+                  <div key={idx}>
+                    <Badge variant="secondary" className="px-5 py-3 rounded-xl text-sm font-medium bg-gradient-to-r from-secondary/50 to-secondary/30 border border-border/30 hover:border-primary/50 transition-all duration-200">
+                      {skill}
+                    </Badge>
+                  </div>
                 ))}
               </div>
             </section>
           )}
 
-          <section className="space-y-6">
-            <h2 className="text-2xl font-black tracking-tight flex items-center gap-3">
-              <div className="w-1 h-8 bg-primary rounded-full" />
-              Curriculum
-            </h2>
-            <div className="space-y-4">
+          <section className="space-y-8">
+            <div className="flex items-center gap-4">
+              <div className="w-12 h-12 bg-gradient-to-br from-blue-500/20 to-cyan-500/10 rounded-xl flex items-center justify-center">
+                <ListChecks className="w-6 h-6 text-blue-500" />
+              </div>
+              <h2 className="text-3xl font-black tracking-tight">Curriculum</h2>
+            </div>
+            <div className="space-y-6">
               {courseData.sections?.map((section: any, idx: number) => (
-                <Card key={section.id} className="border-border/40 overflow-hidden hover:border-primary/20 transition-all">
-                  <div className="bg-muted/30 p-5 flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="w-10 h-10 rounded-xl bg-background border border-border/50 flex items-center justify-center font-black text-primary">
-                        {idx + 1}
-                      </div>
-                      <h3 className="font-bold text-lg">{section.title}</h3>
-                    </div>
-                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-widest">{section.lectures?.length} Lectures</span>
-                  </div>
-                  <div className="divide-y divide-border/30">
-                    {section.lectures?.map((lecture: any) => (
-                      <div key={lecture.id} className="p-4 flex items-center justify-between hover:bg-muted/10 transition-colors group">
-                        <div className="flex items-center gap-4">
-                          <PlayCircle className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors" />
-                          <span className="text-sm font-medium">{lecture.title}</span>
+                <div key={section.id}>
+                  <Card className="border-border/40 overflow-hidden hover:border-primary/30 transition-all duration-300 hover:shadow-lg group">
+                    <div className="bg-gradient-to-r from-muted/40 to-muted/20 p-6 flex items-center justify-between group-hover:from-muted/50 group-hover:to-muted/30 transition-all">
+                      <div className="flex items-center gap-4">
+                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-primary/20 to-primary/10 border border-primary/30 flex items-center justify-center font-black text-primary text-lg group-hover:scale-110 transition-transform">
+                          {idx + 1}
                         </div>
-                        {lecture.duration && <span className="text-xs text-muted-foreground">{Math.round(lecture.duration / 60)} min</span>}
+                        <div>
+                          <h3 className="font-bold text-xl text-foreground">{section.title}</h3>
+                          <p className="text-sm text-muted-foreground mt-1">{section.lectures?.length || 0} lectures</p>
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                </Card>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-primary uppercase tracking-wider bg-primary/10 px-3 py-1 rounded-full">
+                          Section {idx + 1}
+                        </span>
+                      </div>
+                    </div>
+                    <div className="divide-y divide-border/20">
+                      {section.lectures?.map((lecture: any, lectureIdx: number) => {
+                        const isNotes = lecture.type === "notes";
+                        const isCourseCompleted = enrollmentStatus?.progress?.percent === 100;
+                        const shouldShowGuestAuthPrompt = !user;
+                        const shouldShowEnrollPrompt = user && !isEnrolled && !isCourseCompleted;
+
+                        if (isNotes) {
+                          const selectedLecture =
+                            lecturesFromAPI?.find((l: any) => l.id === lecture.id) ||
+                            courseData?.sections
+                              ?.flatMap((s: any) => s.lectures)
+                              ?.find((l: any) => l.id === lecture.id);
+                          
+                          return (
+                            <NotesPreview
+                              key={lecture.id}
+                              lecture={selectedLecture}
+                              user={user}
+                              isEnrolled={isEnrolled}
+                              isCourseCompleted={isCourseCompleted}
+                              onRegisterClick={handleLockedContentClick}
+                              onEnrollClick={handleEnroll}
+                            />
+                          );
+                        }
+
+                        return (
+                          <div 
+                            key={lecture.id} 
+                            className={cn(
+                              "p-4 flex items-center justify-between transition-colors group relative",
+                              shouldShowGuestAuthPrompt && "blur-sm opacity-60 pointer-events-none",
+                              !shouldShowGuestAuthPrompt && "hover:bg-muted/10"
+                            )}
+                            onClick={shouldShowGuestAuthPrompt ? handleLockedContentClick : undefined}
+                          >
+                            <div className="flex items-center gap-4">
+                              <div className="w-8 h-8 rounded-lg bg-muted flex items-center justify-center text-xs font-bold text-muted-foreground">
+                                {lectureIdx + 1}
+                              </div>
+                              <div>
+                                <p className="font-medium text-foreground">{lecture.title}</p>
+                                <p className="text-sm text-muted-foreground">{lecture.duration || "5 min"}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {shouldShowGuestAuthPrompt && (
+                                <div className="text-center">
+                                  <Lock className="w-8 h-8 text-primary mx-auto mb-2" />
+                                  <p className="text-xs font-medium text-primary">Click to unlock</p>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </Card>
+                </div>
               ))}
             </div>
           </section>
+
+          {/* Guest CTA */}
+          {!user && courseData.sections && courseData.sections.length > 0 && (
+            <div className="mt-8 text-center">
+              <Button 
+                onClick={handleLockedContentClick}
+                size="lg"
+                className="bg-primary hover:bg-primary/90 text-white font-bold px-8 py-3"
+              >
+                View full curriculum
+              </Button>
+              <p className="mt-3 text-sm text-muted-foreground">
+                Get instant access to {courseData.sections.reduce((acc: number, section: any) => acc + (section.lectures?.length || 0), 0)} lectures, 
+                progress tracking, and certificate upon completion.
+              </p>
+            </div>
+          )}
         </div>
 
         <div className="lg:w-80 space-y-8">
@@ -489,6 +690,12 @@ export function CourseDetailPage() {
           </section>
         </div>
       </div>
+
+      {/* Auth Modal */}
+      <AuthModal 
+        isOpen={showAuthModal} 
+        onClose={() => setShowAuthModal(false)} 
+      />
     </div>
   );
 }

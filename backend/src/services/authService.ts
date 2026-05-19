@@ -99,24 +99,30 @@ export async function getMe(userId: string) {
 }
 
 export async function forgotPassword(email: string) {
+  console.log("🔥 SERVICE CALLED");
+  
   const user = await prisma.user.findUnique({ where: { email } });
-  if (!user) {
-    // Return success even if user not found for security (prevent email enumeration)
-    return { message: "If an account with that email exists, a reset link has been sent." };
-  }
-
-  // In a real app, generate a random token and send via email.
-  // For this demo, we'll use a short-lived JWT.
+  
+  // Generate JWT token for password reset
   const token = jwt.sign(
-    { userId: user.id, type: "password-reset" },
+    { userId: user?.id || "unknown", type: "password-reset" },
     JWT_SECRET,
     { expiresIn: "1h" }
   );
 
-  // MOCK EMAIL LOG
-  console.log(`[AUTH] Password reset link for ${email}: ${process.env.CLIENT_URL}/reset-password?token=${token}`);
+  // Log reset link in console (ALWAYS execute)
+  const resetLink = `${process.env.CLIENT_URL || "http://localhost:5173"}/reset-password?token=${token}`;
   
-  return { message: "If an account with that email exists, a reset link has been sent." };
+  console.log("=================================");
+  console.log("🔗 PASSWORD RESET LINK:");
+  console.log(resetLink);
+  console.log("=================================");
+  
+  // Return reset link for display on website
+  return { 
+    message: "Reset link generated successfully.", 
+    resetLink 
+  };
 }
 
 export async function resetPassword(token: string, newPassword: string) {

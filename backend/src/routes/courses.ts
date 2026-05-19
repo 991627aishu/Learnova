@@ -7,6 +7,7 @@ export const courseRouter = Router();
 courseRouter.get("/", optionalAuthenticate, coursesController.list);
 courseRouter.get("/my-instructor", authenticate, requireRole("instructor", "admin" as Role), coursesController.listMyInstructor);
 courseRouter.get("/:id", optionalAuthenticate, coursesController.getOne);
+courseRouter.get("/:id/learn", optionalAuthenticate, coursesController.getStudentCourse);
 courseRouter.get("/:id/ai-details", optionalAuthenticate, coursesController.getAIDetails);
 
 courseRouter.post("/", authenticate, requireRole("instructor", "admin" as Role), coursesController.create);

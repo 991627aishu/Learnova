@@ -205,6 +205,17 @@ export async function list(req: AuthRequest, res: Response) {
     orderBy: { createdAt: "desc" },
     take: limit,
   });
+
+  // 🚨 DEBUG: Log courses fetch details
+  console.log("🎯 COURSES FETCH DEBUG:", {
+    userRole: role,
+    statusFilter,
+    where,
+    totalCourses: courses.length,
+    courseStatuses: courses.map(c => ({ id: c.id, title: c.title, status: c.status })),
+    limit
+  });
+
   res.json({ success: true, courses: courses.map(normalizeCourseCategory) });
 }
 
@@ -214,7 +225,7 @@ export async function listMyInstructor(req: AuthRequest, res: Response) {
     where: { instructorId: req.user.id },
     include: {
       categoryRel: { select: { id: true, name: true, slug: true } },
-      _count: { select: { enrollments: true, sections: true } },
+      _count: { select: { enrollments: true, sections: true, reviews: true } },
     },
     orderBy: { updatedAt: "desc" },
   });
@@ -223,6 +234,7 @@ export async function listMyInstructor(req: AuthRequest, res: Response) {
 
 export async function getOne(req: AuthRequest, res: Response) {
   const id = req.params.id;
+  console.log("Course request received:", id, "User:", req.user?.id);
   const course = await prisma.course.findUnique({
     where: { id },
     include: {
@@ -255,7 +267,13 @@ export async function getOne(req: AuthRequest, res: Response) {
     course.sections.forEach(s => {
       s.lectures.forEach(l => {
         l.videoUrl = null;
-        l.content = "Locked Content - Please enroll or purchase to view.";
+        // For notes lectures, preserve the PDF URL but mark as locked
+        if (l.type === "notes" && (l.content?.startsWith('/uploads/') || l.content?.startsWith('http'))) {
+          // Keep the PDF URL for preview, but the frontend will handle access control
+          console.log("🔒 Notes lecture PDF URL preserved for preview:", l.content);
+        } else {
+          l.content = "Locked Content - Please enroll or purchase to view.";
+        }
       });
     });
   }
@@ -512,6 +530,190 @@ export async function update(req: AuthRequest, res: Response) {
   triggerAutoDescription(id).catch(err => console.error("Auto-description failed", err));
 
   res.json({ success: true, course: normalizeCourseCategory(course) });
+}
+
+export async function getStudentCourse(req: AuthRequest, res: Response) {
+  console.log("🎯 STUDENT COURSE API HIT");
+  console.log("Method:", req.method);
+  console.log("URL:", req.originalUrl);
+  console.log("CourseId:", req.params.id);
+  console.log("User authenticated:", !!req.user);
+  console.log("UserId:", req.user?.id);
+  
+  const courseId = req.params.id;
+  console.log("Student course request received:", courseId, "User:", req.user?.id || "anonymous");
+
+  // 1. VERIFY COURSE EXISTS
+  const course = await prisma.course.findUnique({
+    where: { id: courseId },
+    include: {
+      categoryRel: true,
+      instructor: { select: { id: true, firstName: true, lastName: true, avatar: true } },
+      sections: {
+        orderBy: { order: "asc" },
+        include: {
+          lectures: { 
+            orderBy: { order: "asc" }, 
+            select: {
+              id: true,
+              title: true,
+              type: true,
+              content: true,
+              videoUrl: true,
+              videoType: true,
+              compiledPdfUrl: true,
+              duration: true,
+              order: true,
+              quizId: true,
+              createdAt: true,
+              updatedAt: true,
+              attachments: {
+                select: {
+                  id: true,
+                  name: true,
+                  url: true,
+                  type: true,
+                  size: true
+                }
+              }
+            }
+          },
+        },
+      },
+      _count: { select: { enrollments: true, reviews: true } },
+    },
+  });
+
+  if (!course) {
+    console.log("Course not found:", courseId);
+    return res.status(404).json({ message: "Course not found" });
+  }
+
+  
+  if (course.status !== "published" && req.user?.id !== course.instructorId && req.user?.role !== "admin") {
+    return res.status(404).json({ message: "Course not found" });
+  }
+
+  // 2. FETCH ENROLLMENT (only if user is authenticated)
+  let enrollment = null;
+  console.log("🎯 ENROLLMENT CHECK START");
+  console.log("USER AUTHENTICATED:", !!req.user);
+  console.log("USER ID:", req.user?.id);
+  console.log("COURSE ID:", courseId);
+  
+  if (req.user) {
+    enrollment = await prisma.enrollment.findFirst({
+      where: {
+        courseId,
+        userId: req.user.id
+      },
+      include: {
+        progress: {
+          include: {
+            lectureProgress: true
+          }
+        }
+      }
+    });
+    console.log("🎯 ENROLLMENT FOUND:", !!enrollment);
+    console.log("🎯 ENROLLMENT DATA:", enrollment ? {
+      enrollmentId: enrollment.id,
+      userId: enrollment.userId,
+      courseId: enrollment.courseId,
+      progress: enrollment.progress ? {
+        percent: enrollment.progress.percent,
+        lectureProgressCount: enrollment.progress.lectureProgress.length
+      } : null
+    } : null);
+  } else {
+    console.log("🎯 NO USER - ENROLLMENT CHECK SKIPPED");
+  }
+
+  // 3. LECTURES DATA (already included in course query)
+  const lecturesData = course.sections.flatMap(section => 
+    section.lectures.map(lecture => ({
+      ...lecture,
+      sectionId: section.id,
+      sectionTitle: section.title,
+      sectionOrder: section.order
+    }))
+  );
+
+  // 4. PROCESS PROGRESS DATA
+  const progressData = enrollment?.progress ? {
+    percent: enrollment.progress.percent || 0,
+    lectureProgress: enrollment.progress.lectureProgress.map((lp: any) => ({
+      lectureId: lp.lectureId,
+      completed: lp.completed,
+      progressPercent: lp.progressPercent || 0
+    }))
+  } : [];
+
+  // 6. CRITICAL FIX: ENSURE compiledPdfUrl IS ALWAYS INCLUDED FOR NOTES LECTURES
+  console.log("🔧 CRITICAL FIX: Processing lectures for video and PDF URL inclusion");
+  course.sections.forEach((s: any) => {
+    s.lectures.forEach((l: any) => {
+      console.log("🔧 Processing lecture:", l.title, "Type:", l.type, "videoUrl:", l.videoUrl, "videoType:", l.videoType, "compiledPdfUrl:", (l as any).compiledPdfUrl);
+      
+      // For notes lectures, ALWAYS ensure compiledPdfUrl is included
+      if (l.type === "notes") {
+        if (!(l as any).compiledPdfUrl) {
+          console.log("⚠️ WARNING: Notes lecture missing compiledPdfUrl:", l.title);
+        } else {
+          console.log("✅ Notes lecture has compiledPdfUrl:", (l as any).compiledPdfUrl);
+        }
+      }
+      
+      // CRITICAL FIX: Check video access logic
+      if (l.type === "video") {
+        console.log("🎥 VIDEO LECTURE FOUND:", l.title);
+        console.log("🎥 ORIGINAL videoUrl:", l.videoUrl);
+        console.log("🎥 ORIGINAL videoType:", l.videoType);
+        console.log("🎥 ENROLLMENT STATUS:", !!enrollment);
+        
+        // Check if user has access (enrolled OR course completed)
+        const hasAccess = !!enrollment && enrollment.progress ? enrollment.progress.percent === 100 : false;
+        
+        if (!hasAccess) {
+          console.log("🔒 No access - video URL will be restricted for:", l.title);
+          l.videoUrl = null;
+          console.log("🔒 videoUrl set to null for:", l.title);
+        } else {
+          console.log("✅ ACCESS GRANTED - videoUrl preserved for:", l.title);
+          console.log("✅ FINAL videoUrl:", l.videoUrl);
+          console.log("✅ FINAL videoType:", l.videoType);
+        }
+      }
+      
+      // For users without access, only restrict video content, not PDF URLs
+      const hasAccess = !!enrollment && enrollment.progress ? enrollment.progress.percent === 100 : false;
+      if (!hasAccess) {
+        if (l.type === "video") {
+          l.videoUrl = null;
+          console.log("🔒 No access - video URL restricted for:", l.title);
+        }
+        // CRITICAL: NEVER overwrite content field - it contains LaTeX code
+        // CRITICAL: NEVER overwrite compiledPdfUrl - student needs this for PDF
+        console.log("🔒 Preserving content and compiledPdfUrl for lecture:", l.title);
+      }
+    });
+  });
+
+  console.log("API response structure:", {
+    course: course.id,
+    lectures: lecturesData.length,
+    progress: progressData,
+    enrollment: enrollment ? "found" : null
+  });
+
+  // 7. RETURN EXACT STRUCTURE EXPECTED BY FRONTEND
+  res.json({
+    success: true,
+    course: normalizeCourseCategory(course),
+    lectures: lecturesData,
+    progress: progressData || [],
+    enrollment: enrollment || null
+  });
 }
 
 export async function remove(req: AuthRequest, res: Response) {

@@ -340,9 +340,17 @@ async function compileLegacyProject(code: string, projectId: string, res: Respon
     });
   }
 
+  // Store the compiled PDF and get fileUrl
+  const storedPdf = await storeCompiledPdf(projectId, `compiled-${projectId}`, {
+    copyReferencedImages: true,
+    enableBibtex: true,
+    compilerFallback: true,
+    maxPasses: 3
+  });
+
   return res.json({
     success: true,
-    pdfBase64: result.base64,
+    fileUrl: storedPdf.publicUrl,
     logs: result.logs,
     errors: [],
     compilationTime: result.compilationTime,

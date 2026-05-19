@@ -1,44 +1,46 @@
+@import 'katex/dist/katex.min.css';
+
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 @layer base {
   :root {
-    --background: 210 40% 98%; /* Light gray wrapper */
-    --foreground: 222.2 84% 4.9%;
+    --background: 0 0% 98%; /* Light gray wrapper */
+    --foreground: 0 0% 9%;
     --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
-    --primary: 243 75% 59%; /* Deep blue / indigo */
-    --primary-foreground: 210 40% 98%;
-    --secondary: 240 100% 97%;
-    --secondary-foreground: 243 75% 59%;
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
-    --accent: 240 100% 97%;
-    --accent-foreground: 243 75% 59%;
+    --card-foreground: 0 0% 9%;
+    --primary: 45 93% 47%; /* Gold/amber */
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 96%;
+    --secondary-foreground: 45 93% 47%;
+    --muted: 0 0% 96%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 0 0% 96%;
+    --accent-foreground: 45 93% 47%;
     --destructive: 0 84.2% 60.2%;
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 262 83% 58%; /* Purple highlight */
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 45 93% 47%; /* Gold highlight */
     --radius: 1rem;
   }
   .dark {
-    --background: 224 71% 4%;
-    --foreground: 210 40% 98%;
-    --card: 222 47% 11%;
-    --card-foreground: 210 40% 98%;
-    --primary: 243 75% 59%;
-    --primary-foreground: 210 40% 98%;
-    --secondary: 226 58% 10%;
-    --secondary-foreground: 210 40% 98%;
-    --muted: 217 32% 17%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 226 58% 10%;
-    --accent-foreground: 210 40% 98%;
+    --background: 0 0% 3%; /* Matte black */
+    --foreground: 0 0% 98%;
+    --card: 0 0% 6%; /* Dark charcoal */
+    --card-foreground: 0 0% 98%;
+    --primary: 45 93% 47%; /* Gold/amber */
+    --primary-foreground: 0 0% 9%;
+    --secondary: 0 0% 8%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 0 0% 10%;
+    --muted-foreground: 0 0% 64%;
+    --accent: 0 0% 8%;
+    --accent-foreground: 0 0% 98%;
     --destructive: 0 62.8% 30.6%;
-    --border: 217 32% 17%;
-    --input: 217 32% 17%;
-    --ring: 262 83% 58%;
+    --border: 0 0% 15%;
+    --input: 0 0% 15%;
+    --ring: 45 93% 47%; /* Gold highlight */
   }
   * {
     @apply border-border;

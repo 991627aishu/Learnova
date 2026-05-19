@@ -1,16 +1,22 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
-import { Users, DollarSign, BookOpen, Star } from "lucide-react";
-import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { Users, DollarSign, BookOpen, Star, Plus } from "lucide-react";
 import { api } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { InstructorCourseCard } from "@/components/instructor/InstructorCourseCard";
 
 interface Course {
   id: string;
   title: string;
+  subtitle?: string | null;
+  description?: string | null;
+  thumbnail?: string | null;
   status: string;
-  _count: { enrollments: number };
+  averageRating: number;
+  reviewCount: number;
+  _count: { enrollments: number; sections: number; reviews: number };
 }
 
 export function InstructorDashboard() {
@@ -26,7 +32,6 @@ export function InstructorDashboard() {
   const courses = coursesData?.courses ?? [];
   const totalStudents = courses.reduce((acc, c) => acc + (c._count?.enrollments ?? 0), 0);
   const published = courses.filter((c) => c.status === "published").length;
-  const chartData = [{ name: "Students", value: totalStudents }, { name: "Courses", value: published }];
 
   const cards = [
     { label: "Total Students", value: totalStudents, icon: Users },
@@ -56,34 +61,52 @@ export function InstructorDashboard() {
           </motion.div>
         ))}
       </div>
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card>
-          <CardHeader><CardTitle>Overview</CardTitle></CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={200}>
-              <AreaChart data={chartData}>
-                <XAxis dataKey="name" />
-                <YAxis />
-                <Tooltip />
-                <Area type="monotone" dataKey="value" stroke="hsl(var(--primary))" fill="hsl(var(--primary) / 0.2)" />
-              </AreaChart>
-            </ResponsiveContainer>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader><CardTitle>Recent courses</CardTitle></CardHeader>
-          <CardContent>
-              <ul className="space-y-2">
-                {courses.slice(0, 5).map((c) => (
-                  <li key={c.id} className="flex items-center justify-between rounded-lg border p-3">
-                    <span className="font-medium text-foreground">{c.title}</span>
-                    <Link to={`/instructor/course/${c.id}/edit`} className="text-sm text-primary hover:underline">Edit</Link>
-                  </li>
-                ))}
-                {courses.length === 0 && <p className="text-muted-foreground text-sm">No courses yet. <Link to="/instructor/courses/new" className="text-primary hover:underline">Create one</Link></p>}
-              </ul>
-          </CardContent>
-        </Card>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h2 className="text-2xl font-bold text-foreground">Your Courses</h2>
+          <Link to="/instructor/courses/new">
+            <Button className="gap-2">
+              <Plus className="w-4 h-4" />
+              Create Course
+            </Button>
+          </Link>
+        </div>
+        
+        {courses.length === 0 ? (
+          <Card className="border-dashed border-2 bg-transparent">
+            <CardContent className="p-20 text-center flex flex-col items-center gap-4">
+              <div className="w-16 h-16 rounded-full bg-muted/30 flex items-center justify-center">
+                <BookOpen className="w-8 h-8 text-muted-foreground" />
+              </div>
+              <div className="space-y-2">
+                <p className="text-xl font-bold text-foreground">No courses yet</p>
+                <p className="text-muted-foreground max-w-xs mx-auto">
+                  Create your first course to start teaching and earning.
+                </p>
+              </div>
+              <Link to="/instructor/courses/new">
+                <Button className="gap-2">
+                  <Plus className="w-4 h-4" />
+                  Create Your First Course
+                </Button>
+              </Link>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 items-stretch">
+            {courses.map((course, index) => (
+              <motion.div
+                key={course.id}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.1 }}
+                className="h-full"
+              >
+                <InstructorCourseCard course={course} />
+              </motion.div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

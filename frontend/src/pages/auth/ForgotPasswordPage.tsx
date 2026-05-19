@@ -20,16 +20,31 @@ type Form = z.infer<typeof schema>;
 export function ForgotPasswordPage() {
   const [loading, setLoading] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [resetLink, setResetLink] = useState<string>("");
   const { register, handleSubmit, formState: { errors } } = useForm<Form>({
     resolver: zodResolver(schema),
   });
 
   const onSubmit = async (data: Form) => {
     setLoading(true);
-    const res = await api("/auth/forgot-password", { method: "POST", body: data });
-    setLoading(false);
-    if (!res.error) {
-      setSubmitted(true);
+    try {
+      const res = await api("/auth/forgot-password", { method: "POST", body: data });
+      setLoading(false);
+      
+      if (res.error) {
+        console.error("API Error:", res.error);
+        return;
+      }
+      
+      if (res.data && (res.data as any).resetLink) {
+        setResetLink((res.data as any).resetLink);
+        setSubmitted(true);
+      } else {
+        console.error("No reset link in response:", res);
+      }
+    } catch (error) {
+      setLoading(false);
+      console.error("Request failed:", error);
     }
   };
 
@@ -92,10 +107,26 @@ export function ForgotPasswordPage() {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <p className="text-lg font-bold text-foreground">Email Sent!</p>
-                    <p className="text-sm text-muted-foreground">
-                      If an account exists for that email, we've sent instructions to reset your password.
+                    <p className="text-lg font-bold text-foreground">Reset Link Generated!</p>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      Click the link below to reset your password:
                     </p>
+                    {resetLink && (
+                      <div className="space-y-3">
+                        <a 
+                          href={resetLink} 
+                          className="inline-block w-full bg-primary text-primary-foreground px-4 py-3 rounded-lg font-medium hover:bg-primary/90 transition-colors"
+                        >
+                          Click Here to Reset Password
+                        </a>
+                        <div className="text-xs text-muted-foreground">
+                          <p>Or copy this link:</p>
+                          <p className="break-all bg-muted p-2 rounded mt-1">
+                            {resetLink}
+                          </p>
+                        </div>
+                      </div>
+                    )}
                   </div>
                   <Button variant="outline" className="w-full h-12 rounded-xl" asChild>
                     <Link to="/login">Return to Login</Link>
